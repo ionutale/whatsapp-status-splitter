@@ -20,7 +20,12 @@
 		onChange?: (id: string, next: Segment, moved: 'start' | 'end') => void;
 	} = $props();
 
-	let drag = $state<{ edge: 'start' | 'end'; pointerX: number; initial: Segment } | null>(null);
+	let drag = $state<{
+		edge: 'start' | 'end';
+		pointerId: number;
+		pointerX: number;
+		initial: Segment;
+	} | null>(null);
 
 	function startDrag(edge: 'start' | 'end', event: PointerEvent) {
 		event.stopPropagation();
@@ -31,11 +36,11 @@
 		} catch {
 			// Synthetic pointer events in tests have no real pointer to capture.
 		}
-		drag = { edge, pointerX: event.clientX, initial: { ...segment } };
+		drag = { edge, pointerId: event.pointerId, pointerX: event.clientX, initial: { ...segment } };
 	}
 
 	function moveDrag(event: PointerEvent) {
-		if (!drag) return;
+		if (!drag || event.pointerId !== drag.pointerId) return;
 		const delta = (event.clientX - drag.pointerX) / pxPerSecond;
 		const next: Segment =
 			drag.edge === 'start'
@@ -62,20 +67,16 @@
 	const duration = $derived(segment.end - segment.start);
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="segment-bar absolute flex h-9 items-center rounded-selector border border-base-content/20"
 	class:selected
 	style="left:{segment.start * pxPerSecond}px; width:{duration * pxPerSecond}px; top:{lane * 44}px"
-	role="button"
-	tabindex="0"
 	data-testid="segment-bar"
 	data-start={segment.start.toFixed(3)}
 	data-end={segment.end.toFixed(3)}
 	data-duration={duration.toFixed(3)}
 	onpointerdown={() => onSelect?.(segment.id)}
-	onkeydown={(event) => {
-		if (event.key === 'Enter' || event.key === ' ') onSelect?.(segment.id);
-	}}
 >
 	<span
 		class="handle absolute top-0 left-0 h-full w-3 cursor-ew-resize rounded-l bg-primary"
@@ -89,6 +90,8 @@
 		onpointerdown={(event) => startDrag('start', event)}
 		onpointermove={moveDrag}
 		onpointerup={endDrag}
+		onpointercancel={endDrag}
+		onlostpointercapture={endDrag}
 		onkeydown={(event) => handleKey(event, 'start')}
 	></span>
 	<span class="pointer-events-none mx-auto truncate px-4 text-xs">
@@ -106,6 +109,8 @@
 		onpointerdown={(event) => startDrag('end', event)}
 		onpointermove={moveDrag}
 		onpointerup={endDrag}
+		onpointercancel={endDrag}
+		onlostpointercapture={endDrag}
 		onkeydown={(event) => handleKey(event, 'end')}
 	></span>
 </div>
