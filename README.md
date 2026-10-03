@@ -141,10 +141,14 @@ HTTPS_DEV=1 ./node_modules/.bin/vite dev --port 5180 --strictPort --host
 
 A service worker ships in the production build only (never in dev). On install
 it precaches the app shell and the whole route graph, so the app opens and runs
-without a network connection — even on a cold cache (first-ever load while
-offline). Build assets are cached on first use. Updates are picked up on the next
-online load after a deploy. Compatibility mode's ffmpeg core (~31MB) downloads
-on first online use and is then cached too.
+without a network connection — even with the browser cache cleared. Updates are
+picked up on the next online load after a deploy. Compatibility mode's ffmpeg
+core (~31MB) downloads on first online use and is then cached too.
+
+Known cosmetic limitation: on a first-ever offline boot with the browser cache
+cleared, one 245-byte route stylesheet (the clip-selection tint) can be missing
+until the next online visit — the app remains fully functional. On releases,
+bump `VERSION` in `static/sw.js` to purge stale caches.
 
 ## Browser support
 
@@ -181,8 +185,6 @@ node scripts/screenshot.mjs   # refreshes docs/screenshot.png (dark hero) + ligh
 Automated tests use synthetic fixtures. Real-phone validation is still a manual
 smoke pass: load an iPhone HEVC clip, trim, export, and confirm **≤16MB** and
 successful **WhatsApp Status upload**; a rotated source must export upright.
-
-Bump `VERSION` in `static/sw.js` on releases to purge stale caches.
 
 ### Project layout
 
