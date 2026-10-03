@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_FORMATS, BlobSource, Input, VideoSampleSink } from 'mediabunny';
 import tiny5sUrl from '../../../static/test-fixtures/tiny-5s.mp4?url';
+import noAudioUrl from '../../../static/test-fixtures/tiny-noaudio.mp4?url';
 import rotatedUrl from '../../../static/test-fixtures/tiny-portrait-rotated.mp4?url';
 import { buildOutputPlan } from '../domain/bitrate';
 import { inspectFile } from './inspect';
@@ -34,10 +35,14 @@ describe('realEncodeClip', () => {
 		expect(await isFtyp(blob)).toBe(true);
 
 		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
-		const duration = await input.computeDuration();
-		expect(Math.abs(duration - 1.5)).toBeLessThanOrEqual(0.35);
-		expect(progress.length).toBeGreaterThan(0);
-		expect(progress.at(-1)).toBeLessThanOrEqual(1);
+		try {
+			const duration = await input.computeDuration();
+			expect(Math.abs(duration - 1.5)).toBeLessThanOrEqual(0.35);
+			expect(progress.length).toBeGreaterThan(0);
+			expect(progress.at(-1)).toBeLessThanOrEqual(1);
+		} finally {
+			input.dispose();
+		}
 	});
 
 	it('starts with real picture, not black frames', async () => {
@@ -52,19 +57,27 @@ describe('realEncodeClip', () => {
 		});
 		const blob = await handle.result;
 		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
-		const videoTrack = await input.getPrimaryVideoTrack();
-		const sink = new VideoSampleSink(videoTrack!);
-		const sample = await sink.getSample(0.05);
-		expect(sample).not.toBeNull();
-		const canvas = new OffscreenCanvas(32, 24);
-		const ctx = canvas.getContext('2d')!;
-		sample!.draw(ctx, 0, 0, 32, 24);
-		const pixels = ctx.getImageData(0, 0, 32, 24).data;
-		let lit = 0;
-		for (let i = 0; i < pixels.length; i += 4) {
-			if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 30) lit++;
+		try {
+			const videoTrack = await input.getPrimaryVideoTrack();
+			const sink = new VideoSampleSink(videoTrack!);
+			const sample = await sink.getSample(0.05);
+			expect(sample).not.toBeNull();
+			try {
+				const canvas = new OffscreenCanvas(32, 24);
+				const ctx = canvas.getContext('2d')!;
+				sample!.draw(ctx, 0, 0, 32, 24);
+				const pixels = ctx.getImageData(0, 0, 32, 24).data;
+				let lit = 0;
+				for (let i = 0; i < pixels.length; i += 4) {
+					if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 30) lit++;
+				}
+				expect(lit).toBeGreaterThan(10);
+			} finally {
+				sample!.close();
+			}
+		} finally {
+			input.dispose();
 		}
-		expect(lit).toBeGreaterThan(10);
 	});
 
 	it('bakes rotation so the exported clip displays portrait', async () => {
@@ -79,9 +92,35 @@ describe('realEncodeClip', () => {
 		});
 		const blob = await handle.result;
 		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
-		const videoTrack = await input.getPrimaryVideoTrack();
-		const width = await videoTrack!.getDisplayWidth();
-		const height = await videoTrack!.getDisplayHeight();
-		expect(height).toBeGreaterThan(width);
+		try {
+			const videoTrack = await input.getPrimaryVideoTrack();
+			const width = await videoTrack!.getDisplayWidth();
+			const height = await videoTrack!.getDisplayHeight();
+			expect(height).toBeGreaterThan(width);
+			// Rotation must be baked into the pixels, not left as display metadata.
+			expect(await videoTrack!.getRotation()).toBe(0);
+		} finally {
+			input.dispose();
+		}
+	});
+
+	it('discards audio when the plan targets no audio', async () => {
+		const file = await loadFixture(noAudioUrl, 'tiny-noaudio.mp4');
+		const { meta } = await inspectFile(file);
+		const plan = buildOutputPlan(1, meta, 'whatsapp');
+		expect(plan.audioKbps).toBe(0);
+		const handle = realEncodeClip({
+			file,
+			segment: { id: 'a', start: 0, end: 1 },
+			plan,
+			onProgress: () => {}
+		});
+		const blob = await handle.result;
+		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+		try {
+			expect(await input.getPrimaryAudioTrack()).toBeNull();
+		} finally {
+			input.dispose();
+		}
 	});
 });
