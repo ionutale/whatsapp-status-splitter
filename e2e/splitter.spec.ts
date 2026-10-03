@@ -175,11 +175,55 @@ test('video without audio exports a silent MP4', async ({ page }) => {
 test('offline: the app shell loads from cache', async ({ page, context }) => {
 	test.skip(process.env.E2E_BUILD !== '1', 'the service worker ships in the production build only');
 
-	// First online visit registers the worker and lets it precache the shell.
+	// First online visit registers the worker and lets it precache the shell
+	// and the route graph.
 	await page.goto('/');
 	await page.evaluate(() => navigator.serviceWorker.ready);
 	await expect(page.getByTestId('file-input')).toBeVisible();
 
+	// Deterministic precache wait: poll the assets cache until the route graph
+	// is in it. This assertion is what catches a missing route node — the root
+	// error boundary (nodes/1) is not referenced by the HTML and used to be
+	// absent from a cold cache.
+	const cacheName = await page.evaluate(async () => {
+		const names = await caches.keys();
+		return names.find((name) => name.startsWith('wss-assets-')) ?? '';
+	});
+	expect(cacheName).not.toBe('');
+
+	let paths: string[] = [];
+	const deadline = Date.now() + 15_000;
+	while (Date.now() < deadline) {
+		paths = await page.evaluate(async (name: string) => {
+			const cache = await caches.open(name);
+			const keys = await cache.keys();
+			return keys.map((request) => new URL(request.url).pathname);
+		}, cacheName);
+		const hasEntry = paths.some((p) => p.startsWith('/_app/immutable/entry/'));
+		const hasNodes = [0, 1, 2].every((n) =>
+			paths.some((p) => p.startsWith(`/_app/immutable/nodes/${n}.`))
+		);
+		if (hasEntry && hasNodes) break;
+		await page.waitForTimeout(250);
+	}
+
+	expect(
+		paths.some((p) => p.startsWith('/_app/immutable/entry/')),
+		`no entry chunk in ${cacheName} (got: ${paths.join(', ')})`
+	).toBe(true);
+	for (const n of [0, 1, 2]) {
+		expect(
+			paths.some((p) => p.startsWith(`/_app/immutable/nodes/${n}.`)),
+			`no nodes/${n} in ${cacheName} (got: ${paths.join(', ')})`
+		).toBe(true);
+	}
+
+	// Purge the browser HTTP cache so the offline reload cannot be served from
+	// it (hashed assets are immutable for a year), then go offline and reload:
+	// everything must come from the service worker caches.
+	const cdp = await context.newCDPSession(page);
+	await cdp.send('Network.enable');
+	await cdp.send('Network.clearBrowserCache');
 	await context.setOffline(true);
 	try {
 		await page.reload();

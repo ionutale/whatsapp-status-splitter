@@ -29,8 +29,8 @@ one timeline, with per-clip export](docs/screenshot.png)
 - **Remembers your work** — settings persist, and each file's clip layout comes
   back when you load it again (localStorage; nothing leaves the machine).
 - **Installable PWA with offline support** — add it to your home screen; after
-  one online visit the app shell and assets are cached and it opens without a
-  network connection.
+  one online visit the app shell, route graph, and assets are cached and it
+  opens without a network connection — even from a cold cache.
 
 ## Quick start
 
@@ -139,11 +139,12 @@ HTTPS_DEV=1 ./node_modules/.bin/vite dev --port 5180 --strictPort --host
 
 ### Offline
 
-A service worker ships in the production build only (never in dev). After one
-online visit it caches the app shell and build assets, so the app opens and runs
-without a network connection. Updates are picked up on the next online load
-after a deploy. Compatibility mode's ffmpeg core (~31MB) downloads on first
-online use and is then cached too.
+A service worker ships in the production build only (never in dev). On install
+it precaches the app shell and the whole route graph, so the app opens and runs
+without a network connection — even on a cold cache (first-ever load while
+offline). Build assets are cached on first use. Updates are picked up on the next
+online load after a deploy. Compatibility mode's ffmpeg core (~31MB) downloads
+on first online use and is then cached too.
 
 ## Browser support
 
@@ -180,6 +181,8 @@ node scripts/screenshot.mjs   # refreshes docs/screenshot.png (dark hero) + ligh
 Automated tests use synthetic fixtures. Real-phone validation is still a manual
 smoke pass: load an iPhone HEVC clip, trim, export, and confirm **≤16MB** and
 successful **WhatsApp Status upload**; a rotated source must export upright.
+
+Bump `VERSION` in `static/sw.js` on releases to purge stale caches.
 
 ### Project layout
 
