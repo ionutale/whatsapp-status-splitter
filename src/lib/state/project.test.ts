@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VideoMeta } from '../domain/bitrate';
 import { ProjectState } from './project.svelte';
+import { fileKey, saveSession, setStorageForTests, SESSION_STORAGE_KEY } from './persist';
 
 const meta = (overrides: Partial<VideoMeta> = {}): VideoMeta => ({
 	displayWidth: 1920,
@@ -109,5 +110,165 @@ describe('ProjectState', () => {
 		expect(state.selectedId).toBeNull();
 		expect(state.dirty).toBe(false);
 		expect(state.notice).toBeNull();
+	});
+});
+
+describe('ProjectState persistence', () => {
+	let storage: Storage;
+
+	const makeStorage = (): Storage => {
+		const map = new Map<string, string>();
+		return {
+			get length() {
+				return map.size;
+			},
+			clear: () => map.clear(),
+			getItem: (key: string) => map.get(key) ?? null,
+			key: (index: number) => [...map.keys()][index] ?? null,
+			removeItem: (key: string) => {
+				map.delete(key);
+			},
+			setItem: (key: string, value: string) => {
+				map.set(key, String(value));
+			}
+		} as Storage;
+	};
+
+	const flushDebounce = () => vi.advanceTimersByTime(350);
+
+	beforeEach(() => {
+		storage = makeStorage();
+		setStorageForTests(storage);
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		setStorageForTests(null);
+		vi.useRealTimers();
+	});
+
+	it('applies persisted settings on construction, before any file loads', () => {
+		const state = new ProjectState();
+		state.preset = 'high';
+		state.crop916 = true;
+		state.setMaxClipDuration(15);
+		flushDebounce();
+
+		const restored = new ProjectState();
+		expect(restored.preset).toBe('high');
+		expect(restored.crop916).toBe(true);
+		expect(restored.maxClipDuration).toBe(15);
+	});
+
+	it('restores the stored clip layout when the same file is loaded again', () => {
+		const file = new File([], 'video.mp4');
+		const state = new ProjectState();
+		state.begin(file);
+		state.ready(80, meta());
+		state.select(state.segments[0].id);
+		state.splitSelected();
+		flushDebounce();
+
+		const restored = new ProjectState();
+		restored.begin(file);
+		restored.ready(80, meta());
+		expect(restored.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 15],
+			[15, 30],
+			[30, 60],
+			[60, 80]
+		]);
+		expect(restored.dirty).toBe(false);
+	});
+
+	it('auto-splits a different file even when a session is stored', () => {
+		const fileA = new File([], 'a.mp4');
+		const first = new ProjectState();
+		first.begin(fileA);
+		first.ready(80, meta());
+		flushDebounce();
+
+		const fileB = new File([], 'b.mp4');
+		const second = new ProjectState();
+		second.begin(fileB);
+		second.ready(80, meta());
+		expect(second.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 30],
+			[30, 60],
+			[60, 80]
+		]);
+	});
+
+	it('falls back to auto-split when stored segments are out of range', () => {
+		const file = new File([], 'video.mp4');
+		saveSession({
+			version: 1,
+			fileKey: fileKey(file),
+			segments: [{ id: 'stale', start: 0, end: 999 }]
+		});
+
+		const state = new ProjectState();
+		state.begin(file);
+		state.ready(80, meta());
+		expect(state.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 30],
+			[30, 60],
+			[60, 80]
+		]);
+	});
+
+	it('falls back to auto-split when a stored segment exceeds the max length', () => {
+		const file = new File([], 'video.mp4');
+		saveSession({
+			version: 1,
+			fileKey: fileKey(file),
+			segments: [
+				{ id: 'a', start: 0, end: 45 },
+				{ id: 'b', start: 45, end: 80 }
+			]
+		});
+
+		const state = new ProjectState();
+		state.begin(file);
+		state.ready(80, meta());
+		expect(state.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 30],
+			[30, 60],
+			[60, 80]
+		]);
+	});
+
+	it('loads normally when the stored session is corrupt', () => {
+		storage.setItem(SESSION_STORAGE_KEY, '{broken json');
+		const file = new File([], 'video.mp4');
+		const state = new ProjectState();
+		state.begin(file);
+		state.ready(80, meta());
+		expect(state.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 30],
+			[30, 60],
+			[60, 80]
+		]);
+	});
+
+	it('flushes pending segment edits when a new file begins', () => {
+		const fileA = new File([], 'a.mp4');
+		const state = new ProjectState();
+		state.begin(fileA);
+		state.ready(80, meta());
+		state.select(state.segments[0].id);
+		state.splitSelected();
+		// No flush yet: begin() must write the pending layout synchronously.
+		state.begin(new File([], 'b.mp4'));
+
+		const reloaded = new ProjectState();
+		reloaded.begin(fileA);
+		reloaded.ready(80, meta());
+		expect(reloaded.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 15],
+			[15, 30],
+			[30, 60],
+			[60, 80]
+		]);
 	});
 });
