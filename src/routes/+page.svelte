@@ -9,6 +9,7 @@
 	import { extractThumbnails } from '../lib/media/thumbnails';
 	import { exportState } from '../lib/state/export.svelte';
 	import { project } from '../lib/state/project.svelte';
+	import { onDestroy } from 'svelte';
 
 	let loading = $state(false);
 	let loadError = $state<string | null>(null);
@@ -41,9 +42,9 @@
 		const token = ++loadToken;
 		loadError = null;
 		project.begin(file);
-		// A new file invalidates any in-flight export: stop it and drop its state
-		// so the old run can't finish and fire a stray download/ZIP.
-		void exportState.cancel();
+		// A new file invalidates any in-flight export: reset() cancels the current
+		// conversion and drops its state so the old run can't finish and fire a
+		// stray download/ZIP. Calling cancel() first would cancel twice.
 		exportState.reset();
 		currentTime = 0;
 		seekRequest = null;
@@ -93,6 +94,13 @@
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	// Revoke the live file URL when the page is destroyed. Deliberately not an
+	// $effect cleanup: that would run on every objectUrl change and revoke the
+	// URL still in use.
+	onDestroy(() => {
+		if (objectUrl) URL.revokeObjectURL(objectUrl);
 	});
 </script>
 

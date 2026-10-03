@@ -47,6 +47,21 @@
 		lastPxPerSecond = pps;
 	});
 
+	// Keep the playhead in view as it moves. Only nudge when it drifts past a
+	// small margin (so a user scroll is never fought), and do nothing when the
+	// whole timeline already fits without scrolling.
+	const PLAYHEAD_MARGIN = 24;
+	$effect(() => {
+		const pps = pxPerSecond;
+		const time = currentTime;
+		if (!scroller || contentWidth <= viewportWidth) return;
+		const x = time * pps;
+		const left = scroller.scrollLeft;
+		if (x < left + PLAYHEAD_MARGIN || x > left + viewportWidth - PLAYHEAD_MARGIN) {
+			scroller.scrollLeft = x - viewportWidth / 2;
+		}
+	});
+
 	function seek(event: MouseEvent) {
 		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const time = (event.clientX - rect.left) / pxPerSecond;
@@ -63,7 +78,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div
 			class="relative"
-			style="width:{contentWidth}px; height:{64 + laneCount * 44}px"
+			style="width:{contentWidth}px; height:{80 + laneCount * 44}px"
 			onclick={seek}
 			data-testid="timeline"
 		>
@@ -84,7 +99,7 @@
 					style="left:{gap.start * pxPerSecond}px; width:{Math.max(
 						2,
 						(gap.end - gap.start) * pxPerSecond
-					)}px; top:64px; height:{laneCount * 44}px"
+					)}px; top:80px; height:{laneCount * 44}px"
 					title="Uncovered"
 				></div>
 			{/each}
@@ -94,12 +109,12 @@
 					style="left:{overlap.start * pxPerSecond}px; width:{Math.max(
 						2,
 						(overlap.end - overlap.start) * pxPerSecond
-					)}px; top:64px; height:{laneCount * 44}px"
+					)}px; top:80px; height:{laneCount * 44}px"
 					title="Overlapping clips"
 					data-testid="overlap-band"
 				></div>
 			{/each}
-			<div class="absolute top-16 left-0 w-full">
+			<div class="absolute top-20 left-0 w-full">
 				{#each segments as segment, index (segment.id)}
 					<SegmentBar
 						{segment}

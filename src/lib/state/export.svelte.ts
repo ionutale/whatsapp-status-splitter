@@ -99,12 +99,18 @@ export class ExportState {
 					this.#deps.downloadBlob(succeeded[0].blob, succeeded[0].name);
 				} else if (mode.finish === 'zip' && succeeded.length > 0) {
 					const zip = await this.#deps.makeZip(succeeded);
-					this.#deps.downloadBlob(zip, mode.zipName);
+					// A reset may have landed while the zip was assembling: re-check the
+					// generation before firing the (now stale) download.
+					if (gen === this.#generation) {
+						this.#deps.downloadBlob(zip, mode.zipName);
+					}
 				}
 			}
 		} catch (error) {
 			console.error('[export] run failed', error);
-			this.runError = error instanceof Error ? error.message : String(error);
+			if (gen === this.#generation) {
+				this.runError = error instanceof Error ? error.message : String(error);
+			}
 		} finally {
 			this.busy = false;
 		}

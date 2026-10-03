@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { EncodeClipFactory, EncodeHandle } from '../media/exporter';
 import { ExportState, type ExportJob } from './export.svelte';
 
@@ -204,6 +204,40 @@ describe('ExportState', () => {
 		expect(state.errors).toEqual({});
 		expect(state.results).toEqual({});
 		expect(downloads).toEqual([]);
+		expect(state.busy).toBe(false);
+	});
+
+	it('does not download a zip that resolves after reset', async () => {
+		const zip = deferred<Blob>();
+		const makeZip = vi.fn(() => zip.promise);
+		const { state, downloads } = makeDeps(fakeEncoder(), makeZip);
+		const run = state.runJobs(new File([], 'v.mp4'), [job('a')], {
+			finish: 'zip',
+			zipName: 'all.zip'
+		});
+		// Wait until the queue has entered zip assembly, then reset mid-flight.
+		await expect.poll(() => makeZip.mock.calls.length).toBe(1);
+		state.reset();
+		zip.resolve(new Blob([new Uint8Array([1])]));
+		await run;
+		expect(downloads).toEqual([]);
+		expect(state.runError).toBeNull();
+		expect(state.busy).toBe(false);
+	});
+
+	it('does not record a run error for a zip that rejects after reset', async () => {
+		const zip = deferred<Blob>();
+		const makeZip = vi.fn(() => zip.promise);
+		const { state } = makeDeps(fakeEncoder(), makeZip);
+		const run = state.runJobs(new File([], 'v.mp4'), [job('a')], {
+			finish: 'zip',
+			zipName: 'all.zip'
+		});
+		await expect.poll(() => makeZip.mock.calls.length).toBe(1);
+		state.reset();
+		zip.reject(new Error('zip boom'));
+		await run;
+		expect(state.runError).toBeNull();
 		expect(state.busy).toBe(false);
 	});
 

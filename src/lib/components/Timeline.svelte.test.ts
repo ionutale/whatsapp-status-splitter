@@ -86,9 +86,14 @@ describe('Timeline', () => {
 			onSegmentChange: () => {}
 		});
 		const timeline = screen.container.querySelector('[data-testid="timeline"]') as HTMLElement;
+		const filmstrip = screen.container.querySelector('[data-testid="filmstrip"]') as HTMLElement;
 		const bar = screen.container.querySelector('[data-testid="segment-bar"]') as HTMLElement;
 		const offset = bar.getBoundingClientRect().top - timeline.getBoundingClientRect().top;
-		expect(offset).toBeGreaterThanOrEqual(60);
+		// The lane area must start below the filmstrip so no bar covers it.
+		expect(bar.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+			filmstrip.getBoundingClientRect().bottom
+		);
+		expect(offset).toBeGreaterThanOrEqual(78);
 	});
 
 	it('selects a clip without seeking when its body is clicked', async () => {
