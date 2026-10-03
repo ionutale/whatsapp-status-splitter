@@ -1,7 +1,18 @@
 <script lang="ts">
+	import type { QualityPreset } from '../domain/bitrate';
 	import { batchState, type BatchItem, type BatchState } from '../state/batch.svelte';
 
-	let { batch = null }: { batch?: BatchState | null } = $props();
+	let {
+		batch = null,
+		maxClipDuration = 30,
+		preset = 'whatsapp',
+		crop916 = false
+	}: {
+		batch?: BatchState | null;
+		maxClipDuration?: number;
+		preset?: QualityPreset;
+		crop916?: boolean;
+	} = $props();
 	const state = $derived(batch ?? batchState);
 
 	function statusLabel(item: BatchItem): string {
@@ -27,6 +38,10 @@
 			>{state.items.length} file{state.items.length === 1 ? '' : 's'}</span
 		>
 	</div>
+
+	<p class="text-xs text-base-content/60" data-testid="batch-settings">
+		{maxClipDuration}s clips · {preset} preset · 9:16 crop {crop916 ? 'on' : 'off'}
+	</p>
 
 	<ul class="flex flex-col gap-2">
 		{#each state.items as item (item.id)}

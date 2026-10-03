@@ -1,7 +1,7 @@
 # WhatsApp Status Splitter
 
-Splits one video into independent, trimmable clips of ≤30s and exports
-WhatsApp-Status-ready MP4s — entirely in the browser. Video is decoded and
+Splits one video — or a batch of videos — into independent, trimmable clips of
+≤30s and exports WhatsApp-Status-ready MP4s — entirely in the browser. Video is decoded and
 re-encoded on-device with [WebCodecs](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API)
 and [Mediabunny](https://mediabunny.dev/); nothing is uploaded and there is no
 server, database, or account.
@@ -78,20 +78,23 @@ Selecting or dropping **two or more videos at once** (the picker accepts
 multiple files) opens a **batch queue** instead of the editor. Press **Start**
 to process them — nothing runs until you do. Each file is read, auto-split with
 the current **max clip length**, and encoded with the current **preset** and
-**9:16 crop** setting, sequentially, one file at a time. When every file is done
-you get **one ZIP** (`status_batch.zip`) containing each file's parts under its
-own folder (`<name>/<name>_partNN.mp4`).
+**9:16 crop** setting, sequentially, one file at a time. When at least one file
+completes you get **one ZIP** (`status_batch.zip`) containing each completed
+file's parts under its own folder (`<name>/<name>_partNN.mp4`); if every file
+fails, nothing is downloaded.
 
 - **Sequential, not parallel:** one clip is encoded at a time, so a batch takes
   as long as the sum of its files — slower than processing them one by one.
 - **Held in memory:** all encoded parts stay in memory until the ZIP is
-  assembled. Fine for phone-sized videos; not intended for a large batch of long
-  clips.
+  assembled — peak memory is roughly 2× the total encoded size during assembly
+  (parts plus archive). Fine for phone-sized videos; not intended for a large
+  batch of long clips.
 - **Unreadable files fail alone:** a file that can't be read is marked **failed**
   with the reason and the rest of the queue continues. Batch mode has no
   compatibility mode — open that file individually to convert it.
-- **Cancel** stops after the clip currently encoding, discards the partial ZIP,
-  and returns the queue to idle (no partial download).
+- **Cancel** stops after the clip currently encoding and discards the partial
+  ZIP (no partial download). Files that already finished stay **Done**; the
+  rest return to **Queued**.
 
 Batch mode never touches the editor: the single-file editor state is left
 exactly as it was.

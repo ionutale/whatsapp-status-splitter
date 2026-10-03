@@ -1,10 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import tiny5sUrl from '../../static/test-fixtures/tiny-5s.mp4?url';
+import { batchState } from '../lib/state/batch.svelte';
 import { project } from '../lib/state/project.svelte';
 import Page from './+page.svelte';
 
 describe('page shell', () => {
+	beforeEach(() => {
+		batchState.clear();
+	});
+
 	it('loads a video and shows the editor', async () => {
 		const screen = await render(Page);
 		const blob = await (await fetch(tiny5sUrl)).blob();
@@ -65,6 +70,32 @@ describe('page shell', () => {
 		const onBody = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
 		document.body.dispatchEvent(onBody);
 		expect(onBody.defaultPrevented).toBe(true);
+	});
+
+	it('loading a single file clears a queued batch and shows the editor', async () => {
+		const screen = await render(Page);
+		const blob = await (await fetch(tiny5sUrl)).blob();
+
+		const drop = (names: string[]) => {
+			const transfer = new DataTransfer();
+			for (const name of names) transfer.items.add(new File([blob], name, { type: 'video/mp4' }));
+			window.dispatchEvent(
+				new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true })
+			);
+		};
+
+		drop(['one.mp4', 'two.mp4']);
+
+		await expect
+			.poll(() => screen.container.querySelectorAll('[data-testid="batch-item"]').length)
+			.toBe(2);
+
+		drop(['solo.mp4']);
+
+		await expect
+			.poll(() => screen.container.querySelector('[data-testid="file-name"]')?.textContent)
+			.toContain('solo.mp4');
+		expect(screen.container.querySelector('[data-testid="batch-panel"]')).toBeNull();
 	});
 
 	it('flushes pending persistence when the page is hidden', async () => {

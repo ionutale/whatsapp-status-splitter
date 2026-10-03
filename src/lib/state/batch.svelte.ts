@@ -2,7 +2,7 @@ import { buildOutputPlan, type QualityPreset } from '../domain/bitrate';
 import { clipFileName, sanitizeBaseName } from '../domain/naming';
 import { autoSplit, type Segment } from '../domain/segments';
 import { downloadBlob } from '../media/download';
-import { realEncodeClip, type EncodeClipFactory } from '../media/exporter';
+import { realEncodeClip, type EncodeClipFactory, type EncodeHandle } from '../media/exporter';
 import { inspectFile, type InspectResult } from '../media/inspect';
 import { makeZip } from '../media/zip';
 import { project } from './project.svelte';
@@ -54,6 +54,7 @@ export class BatchState {
 	#deps: BatchDeps;
 	#cancelRequested = false;
 	#generation = 0;
+	#activeHandle: EncodeHandle | null = null;
 
 	constructor(deps: BatchDeps) {
 		this.#deps = deps;
@@ -63,6 +64,10 @@ export class BatchState {
 	setFiles(files: File[]): void {
 		this.#generation++;
 		this.#cancelRequested = false;
+		// Stop the previous run's current clip from encoding for a queue that
+		// no longer exists; its generation guard drops the result.
+		void this.#activeHandle?.cancel();
+		this.#activeHandle = null;
 		// The previous run's `finally` is generation-guarded, so it will not clear
 		// `running` for this new queue — do it here or Start stays disabled forever.
 		this.running = false;
@@ -85,6 +90,22 @@ export class BatchState {
 		this.#cancelRequested = true;
 	}
 
+	/**
+	 * Drop the queue and stop any in-flight run. Safe to call at any time: the
+	 * generation bump makes the stale run bail out at its next checkpoint, and
+	 * the in-flight clip is canceled so it stops encoding for nothing.
+	 */
+	clear(): void {
+		this.#generation++;
+		this.#cancelRequested = false;
+		this.running = false;
+		void this.#activeHandle?.cancel();
+		this.#activeHandle = null;
+		this.items = [];
+		this.overallProgress = 0;
+		this.runError = null;
+	}
+
 	#setOverall(fileIndex: number, doneClips: number, clipCount: number, fileCount: number): void {
 		const fraction = clipCount > 0 ? doneClips / clipCount : 1;
 		this.overallProgress = Math.min(1, (fileIndex + fraction) / fileCount);
@@ -99,6 +120,7 @@ export class BatchState {
 		const items = this.items;
 		const fileCount = items.length;
 		const entries: { name: string; blob: Blob }[] = [];
+		const usedBases: Record<string, true> = {};
 
 		for (const item of items) {
 			item.status = 'queued';
@@ -128,12 +150,27 @@ export class BatchState {
 					this.#setOverall(i, 1, 1, fileCount);
 					continue;
 				}
-				if (this.#cancelRequested || gen !== this.#generation) break;
+				if (gen !== this.#generation) break;
+				if (this.#cancelRequested) {
+					item.status = 'queued';
+					item.clipIndex = 0;
+					item.progress = 0;
+					break;
+				}
 
 				const segments = this.#deps.split(inspected.duration, project.maxClipDuration);
 				const preset: QualityPreset = project.preset;
 				const crop916 = project.crop916;
-				const base = sanitizeBaseName(item.file.name);
+				// Two files can sanitize to the same base ("My Clip.mp4" and
+				// "My_Clip.mp4"); suffix the duplicates so neither file is silently
+				// dropped from the archive.
+				let base = sanitizeBaseName(item.file.name);
+				if (usedBases[base]) {
+					let n = 2;
+					while (usedBases[`${base}_${n}`]) n++;
+					base = `${base}_${n}`;
+				}
+				usedBases[base] = true;
 				item.clipCount = segments.length;
 				item.status = 'encoding';
 
@@ -160,6 +197,7 @@ export class BatchState {
 							this.#setOverall(i, j + value, segments.length, fileCount);
 						}
 					});
+					this.#activeHandle = handle;
 
 					try {
 						const blob = await handle.result;
@@ -180,6 +218,8 @@ export class BatchState {
 						item.error = error instanceof Error ? error.message : String(error);
 						failed = true;
 						break;
+					} finally {
+						if (this.#activeHandle === handle) this.#activeHandle = null;
 					}
 				}
 
@@ -203,7 +243,9 @@ export class BatchState {
 
 			if (entries.length > 0) {
 				const zip = await this.#deps.makeZip(entries);
-				if (gen !== this.#generation) return;
+				// Cancel can land while the archive is assembled; never offer a
+				// ZIP the user already canceled.
+				if (this.#cancelRequested || gen !== this.#generation) return;
 				this.#deps.downloadBlob(zip, BATCH_ZIP_NAME);
 			}
 			this.overallProgress = 1;

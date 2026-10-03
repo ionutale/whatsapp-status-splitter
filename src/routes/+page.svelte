@@ -47,6 +47,11 @@
 		if (project.dirty && !confirm('Discard the current editing state and load a new video?'))
 			return;
 
+		// Loading a single file abandons any batch queue: stop the run and drop
+		// the stale panel so its Start button can't fire a batch from behind the
+		// editor.
+		batchState.clear();
+
 		// A newly loaded file invalidates any in-flight compatibility conversion:
 		// abort it and clear its state so a late result can never replace the new
 		// video.
@@ -245,7 +250,11 @@
 	{/if}
 
 	{#if batchState.items.length > 0}
-		<BatchPanel />
+		<BatchPanel
+			maxClipDuration={project.maxClipDuration}
+			preset={project.preset}
+			crop916={project.crop916}
+		/>
 	{/if}
 
 	{#if !project.meta}

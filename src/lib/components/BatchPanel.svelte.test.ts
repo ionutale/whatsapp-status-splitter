@@ -101,6 +101,21 @@ describe('BatchPanel', () => {
 		await expect.poll(() => el(screen, 'batch-status')?.textContent?.trim()).toBe('Done');
 	});
 
+	it('shows the current settings read-only', async () => {
+		const state = makeState([]);
+		state.setFiles([file('a.mp4')]);
+		const screen = await render(BatchPanel, {
+			batch: state,
+			maxClipDuration: 7,
+			preset: 'high',
+			crop916: true
+		});
+
+		expect(el(screen, 'batch-settings')?.textContent?.trim()).toBe(
+			'7s clips · high preset · 9:16 crop on'
+		);
+	});
+
 	it('Cancel calls through while running', async () => {
 		const state = makeState([], () => ({
 			result: new Promise<Blob>(() => {}),
