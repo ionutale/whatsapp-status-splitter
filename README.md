@@ -1,54 +1,33 @@
-# sv
+# WhatsApp Status Splitter
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A browser app that splits a video into independently trimmable clips and exports
+WhatsApp-ready MP4s — all on-device via WebCodecs and Mediabunny, with no uploads.
 
-## Creating a project
+## Prerequisites
 
-If you're seeing this, you've probably already done this step. Congrats!
+- Node.js and [pnpm](https://pnpm.io/)
+- Chrome on macOS (WebCodecs support)
 
-```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
+## Development
 
 ```sh
-# recreate this project
-pnpm dlx sv@1.0.1 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" playwright tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:static" --install pnpm .
+pnpm install
+pnpm dev
 ```
 
-## Adding features
-
-Add features to your project with `sv add`:
+## Checks
 
 ```sh
-npx sv add
+pnpm check              # svelte-check + TypeScript
+pnpm lint               # Prettier + ESLint
+pnpm test:unit -- --run # Vitest: Node unit project + Chromium browser project
+pnpm test:e2e           # Playwright end-to-end (Chromium)
 ```
 
-For example, to add Tailwind CSS:
+## Recreating this scaffold
 
 ```sh
-npx sv add tailwindcss
+pnpm dlx sv@1.0.1 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" playwright tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:static" --install pnpm . --no-dir-check
 ```
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
+This README will be expanded in a later task.
