@@ -1,33 +1,140 @@
 # WhatsApp Status Splitter
 
-A browser app that splits a video into independently trimmable clips and exports
-WhatsApp-ready MP4s — all on-device via WebCodecs and Mediabunny, with no uploads.
+Splits one video into independent, trimmable clips of ≤30s and exports
+WhatsApp-Status-ready MP4s — entirely in the browser. Video is decoded and
+re-encoded on-device with [WebCodecs](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API)
+and [Mediabunny](https://mediabunny.dev/); nothing is uploaded and there is no
+server, database, or account.
 
 ## Prerequisites
 
-- Node.js and [pnpm](https://pnpm.io/)
-- Chrome on macOS (WebCodecs support)
+- **Node 20+** and **[pnpm](https://pnpm.io/)**
+- **Google Chrome on macOS** — the supported target, because it provides
+  WebCodecs. Safari and Firefox show an in-app notice when a file's codec can't
+  be decoded and point you at Chrome.
+- **ffmpeg** — only needed if you want to regenerate the test fixtures
+  (`brew install ffmpeg`).
 
-## Development
+## Setup / run
 
 ```sh
 pnpm install
 pnpm dev
 ```
 
-## Checks
+Open the URL printed by Vite (usually <http://localhost:5173>). For a
+production build:
 
 ```sh
-pnpm check              # svelte-check + TypeScript
-pnpm lint               # Prettier + ESLint
-pnpm test:unit -- --run # Vitest: Node unit project + Chromium browser project
-pnpm test:e2e           # Playwright end-to-end (Chromium)
+pnpm build     # static output in build/, with build/index.html as the SPA fallback
+pnpm preview   # serve the built output locally
 ```
 
-## Recreating this scaffold
+## Usage
+
+1. **Load a video** — drag one onto the drop zone, click to choose a file, or
+   drag a video straight out of the macOS Photos app into the page (it arrives
+   as a normal file drop). One video at a time; loading another replaces the
+   current project.
+2. **Split** — the video is auto-split into equal clips of at most the max clip
+   length. Change **Max clip length** and press **Reset** to re-split.
+3. **Trim** — drag a clip's handles, type exact values into the numeric start /
+   end / duration fields, or focus a handle with **Tab** and nudge it with
+   **←/→** (0.1s) or **Shift+←/→** (1s).
+4. **Edit clips** — **Split** at the playhead, **Delete** the selected clip, or
+   **Reset** to discard manual edits and re-split.
+5. **Export** — **Download** an individual clip, **Share** it via the macOS
+   share sheet (directly to WhatsApp / AirDrop), or **Export all (ZIP)** to get
+   every clip in one archive. Clips are encoded sequentially with live progress,
+   cancel, and retry.
+
+## Limits & presets
+
+Global constraints:
+
+| Constraint         | Value                                               |
+| ------------------ | --------------------------------------------------- |
+| Max clip length    | Default **30s**, configurable **1–300s**            |
+| Min clip length    | **0.5s**                                            |
+| WhatsApp file size | Target **≤16MB** (encodes to ~15MB with headroom)   |
+| Supported input    | One video at a time; any codec WebCodecs can decode |
+
+Quality presets:
+
+| Preset               | Resolution | Frame rate | Video bitrate           | Audio    | Size target |
+| -------------------- | ---------- | ---------- | ----------------------- | -------- | ----------- |
+| **WhatsApp (≤16MB)** | 720p cap   | 30fps cap  | adaptive, 800–6000 kbps | 128 kbps | ≤16MB       |
+| **High quality**     | 1080p cap  | 60fps cap  | 8000 kbps               | 192 kbps | —           |
+| **Small file**       | 480p cap   | 30fps cap  | adaptive, 400–3000 kbps | 96 kbps  | ≤16MB       |
+
+The 30s default comes from the classic WhatsApp Status limit. Newer WhatsApp
+versions may accept 60–90s clips, so the max clip length is configurable up to
+300s — the preset still targets ≤16MB per clip.
+
+## Browser support
+
+- **Chrome on macOS** is the supported target.
+- **Safari / Firefox** show an in-app notice when a video's codec cannot be
+  decoded (i.e. WebCodecs support is missing), recommending Chrome or an H.264
+  MP4. They are not a supported path.
+
+## Testing
 
 ```sh
-pnpm dlx sv@1.0.1 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" playwright tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:static" --install pnpm . --no-dir-check
+pnpm test:unit -- --run   # Vitest: Node unit project + Chromium browser project
+pnpm test:e2e             # Playwright end-to-end (Chromium, dev server)
+pnpm test:e2e:build       # Playwright against a production build + preview server
+pnpm check                # svelte-check + TypeScript
+pnpm lint                 # Prettier + ESLint
 ```
 
-This README will be expanded in a later task.
+Fixtures live in `static/test-fixtures/` (tiny synthetic MP4s) and can be
+regenerated with ffmpeg:
+
+```sh
+bash static/test-fixtures/generate.sh
+```
+
+The rotated fixture is produced with `-display_rotation -90`: ffmpeg and
+Mediabunny use opposite rotation conventions, and the script comment explains
+why the sign is flipped.
+
+## Manual smoke checklist
+
+Automated tests use synthetic fixtures; real phone video is the only way to
+validate true WhatsApp-Status acceptance. Run `pnpm dev`, then walk through:
+
+- [ ] **Load** a real **iPhone HEVC portrait** video (ideally rotated and/or 4K)
+      without errors.
+- [ ] **Load** an **Android H.264** video without errors.
+- [ ] **Load** a **macOS screen recording** without errors.
+- [ ] **Auto-split** looks right (equal chunks, no slivers).
+- [ ] **Trim** by dragging handles and by typing numeric values; both agree.
+- [ ] **Export** a clip with the default **WhatsApp** preset.
+- [ ] Exported file is **≤16MB**.
+- [ ] Exported file **plays in QuickTime**.
+- [ ] Exported file **uploads to WhatsApp Status**.
+- [ ] A **rotated** source exports **upright**.
+
+## Project layout
+
+```
+src/
+├─ routes/                 # SvelteKit page + layout
+└─ lib/
+   ├─ domain/              # Pure logic: segments, timeline math, bitrate/presets, naming, formatting
+   ├─ media/               # Browser I/O: inspect, thumbnails, export/encode, zip, download, share
+   ├─ state/               # Svelte 5 runes stores: project + export
+   └─ components/          # UI: drop zone, timeline, segment bar/panel, preview, export panel
+```
+
+## Non-goals
+
+- No server, database, auth, or uploads.
+- No persistence across page refresh.
+- No cropping/aspect-ratio changes, filters, music, watermarks, subtitles, or speed changes.
+- No scene/silence-based auto-splitting — equal chunks plus manual handles only.
+- No drag-to-reorder; clip order always follows timeline order.
+- No mobile/PWA target; desktop Chrome on macOS only.
+- No ffmpeg.wasm fallback in v1.
+- No multi-file queue — one video at a time.
