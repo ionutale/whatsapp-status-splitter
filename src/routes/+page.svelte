@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DropZone from '../lib/components/DropZone.svelte';
+	import BatchPanel from '../lib/components/BatchPanel.svelte';
 	import ExportPanel from '../lib/components/ExportPanel.svelte';
 	import SegmentPanel from '../lib/components/SegmentPanel.svelte';
 	import Timeline from '../lib/components/Timeline.svelte';
@@ -7,6 +8,7 @@
 	import { formatClock } from '../lib/domain/format';
 	import { assertDecodable, inspectFile, type InspectResult } from '../lib/media/inspect';
 	import { extractThumbnails } from '../lib/media/thumbnails';
+	import { batchState } from '../lib/state/batch.svelte';
 	import { exportState } from '../lib/state/export.svelte';
 	import { project } from '../lib/state/project.svelte';
 	import { onDestroy } from 'svelte';
@@ -107,6 +109,17 @@
 		}
 	}
 
+	// 2+ files selected at once enter batch mode; a single file keeps the exact
+	// single-file editor flow. Batch never mutates the editor/project.
+	function handleFiles(files: File[]) {
+		if (files.length === 0) return;
+		if (files.length === 1) {
+			void handleFile(files[0]);
+			return;
+		}
+		batchState.setFiles(files);
+	}
+
 	async function startCompat() {
 		if (!compatFile || converting) return;
 		const file = compatFile;
@@ -204,8 +217,8 @@
 	ondragover={(event) => event.preventDefault()}
 	ondrop={(event) => {
 		event.preventDefault();
-		const file = event.dataTransfer?.files?.[0];
-		if (file) handleFile(file);
+		const files = Array.from(event.dataTransfer?.files ?? []);
+		if (files.length > 0) handleFiles(files);
 	}}
 />
 
@@ -229,6 +242,10 @@
 	{/if}
 	{#if project.notice}
 		<div class="alert alert-warning" role="alert" data-testid="notice-banner">{project.notice}</div>
+	{/if}
+
+	{#if batchState.items.length > 0}
+		<BatchPanel />
 	{/if}
 
 	{#if !project.meta}
@@ -263,7 +280,7 @@
 				{/if}
 			</div>
 		{/if}
-		<DropZone onFile={handleFile} error={loadError} />
+		<DropZone onFile={handleFile} onFiles={handleFiles} multiple error={loadError} />
 	{:else}
 		<section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 			<div class="flex flex-col gap-4">

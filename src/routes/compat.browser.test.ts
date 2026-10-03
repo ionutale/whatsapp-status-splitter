@@ -5,7 +5,8 @@ import { project } from '../lib/state/project.svelte';
 import Page from './+page.svelte';
 
 const mocks = vi.hoisted(() => ({
-	convert: vi.fn()
+	convert: vi.fn(),
+	lastSignal: null as AbortSignal | null
 }));
 
 vi.mock('../lib/media/ffmpeg', () => ({
@@ -61,6 +62,7 @@ const convertButton = (screen: Awaited<ReturnType<typeof render>>) =>
 describe('compatibility mode', () => {
 	beforeEach(() => {
 		resetProject();
+		mocks.lastSignal = null;
 		mocks.convert.mockReset();
 		mocks.convert.mockImplementation(async () => {
 			const blob = await (await fetch(noAudioUrl)).blob();
@@ -175,6 +177,41 @@ describe('compatibility mode', () => {
 		);
 		expect(screen.container.querySelector('[data-testid="file-name"]')?.textContent).not.toContain(
 			'converted.mp4'
+		);
+		expect(mocks.convert).toHaveBeenCalledTimes(1);
+	});
+
+	it('aborts an in-flight conversion when a new file is loaded', async () => {
+		const screen = await render(Page);
+
+		// A conversion that rejects only when its AbortSignal fires, mirroring the
+		// real ffmpeg wrapper.
+		mocks.convert.mockImplementationOnce((_file: File, options: { signal: AbortSignal }) => {
+			mocks.lastSignal = options.signal;
+			return new Promise<File>((_resolve, reject) => {
+				options.signal.addEventListener('abort', () =>
+					reject(new DOMException('Aborted', 'AbortError'))
+				);
+			});
+		});
+
+		pickFile(screen, new File([new Uint8Array([1, 2, 3])], 'old.avi', { type: 'video/avi' }));
+		await expect.poll(() => convertButton(screen)).not.toBeNull();
+		convertButton(screen)!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		await expect.poll(() => mocks.convert).toHaveBeenCalled();
+		expect(mocks.lastSignal?.aborted).toBe(false);
+
+		// Load a readable file while the conversion is still in flight: handleFile
+		// must abort the controller so the old conversion can never land.
+		const blob = await (await fetch(noAudioUrl)).blob();
+		pickFile(screen, new File([blob], 'tiny-noaudio.mp4', { type: 'video/mp4' }));
+		await expect
+			.poll(() => screen.container.querySelector('[data-testid="file-name"]')?.textContent)
+			.toContain('tiny-noaudio.mp4');
+
+		expect(mocks.lastSignal?.aborted).toBe(true);
+		expect(screen.container.querySelector('[data-testid="file-name"]')?.textContent).toContain(
+			'tiny-noaudio.mp4'
 		);
 		expect(mocks.convert).toHaveBeenCalledTimes(1);
 	});

@@ -125,6 +125,28 @@ test('export all produces a ZIP with one entry per clip', async ({ page }) => {
 	]);
 });
 
+test('batch mode splits several videos into one ZIP', async ({ page }) => {
+	await page.goto('/');
+	await page
+		.getByTestId('file-input')
+		.setInputFiles([`${FIXTURES}/tiny-5s.mp4`, `${FIXTURES}/tiny-noaudio.mp4`]);
+	await expect(page.getByTestId('batch-item')).toHaveCount(2);
+
+	const downloadPromise = page.waitForEvent('download', { timeout: 120_000 });
+	await page.getByTestId('batch-start').click();
+	const download = await downloadPromise;
+	expect(download.suggestedFilename()).toBe('status_batch.zip');
+
+	const bytes = await readFile((await download.path())!);
+	const entries = unzipSync(new Uint8Array(bytes));
+	// Default max clip length (30s): each short fixture is a single part, under
+	// its own <base>/ folder in the shared archive.
+	expect(Object.keys(entries).sort()).toEqual([
+		'tiny-5s/tiny-5s_part01.mp4',
+		'tiny-noaudio/tiny-noaudio_part01.mp4'
+	]);
+});
+
 test('rotated portrait source exports portrait', async ({ page }) => {
 	await loadFixture(page, 'tiny-portrait-rotated.mp4');
 	await splitIntoTwoSecondClips(page);

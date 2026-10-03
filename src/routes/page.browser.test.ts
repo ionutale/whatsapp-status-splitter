@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import tiny5sUrl from '../../static/test-fixtures/tiny-5s.mp4?url';
+import { project } from '../lib/state/project.svelte';
 import Page from './+page.svelte';
 
 describe('page shell', () => {
@@ -64,5 +65,15 @@ describe('page shell', () => {
 		const onBody = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
 		document.body.dispatchEvent(onBody);
 		expect(onBody.defaultPrevented).toBe(true);
+	});
+
+	it('flushes pending persistence when the page is hidden', async () => {
+		await render(Page);
+		const flush = vi.spyOn(project, 'flushPendingWrites');
+
+		window.dispatchEvent(new Event('pagehide'));
+		expect(flush).toHaveBeenCalled();
+
+		flush.mockRestore();
 	});
 });

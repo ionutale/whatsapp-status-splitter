@@ -1,11 +1,22 @@
 <script lang="ts">
-	let { onFile, error = null }: { onFile: (file: File) => void; error?: string | null } = $props();
+	let {
+		onFile,
+		onFiles = null,
+		multiple = false,
+		error = null
+	}: {
+		onFile: (file: File) => void;
+		onFiles?: ((files: File[]) => void) | null;
+		multiple?: boolean;
+		error?: string | null;
+	} = $props();
 	let dragging = $state(false);
 
 	function pick(event: Event) {
 		const input = event.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (file) onFile(file);
+		const files = Array.from(input.files ?? []);
+		if (files.length > 1 && onFiles) onFiles(files);
+		else if (files.length > 0) onFile(files[0]);
 		input.value = '';
 	}
 
@@ -26,7 +37,14 @@
 	ondrop={drop}
 	data-testid="dropzone"
 >
-	<input data-testid="file-input" class="sr-only" type="file" accept="video/*" onchange={pick} />
+	<input
+		data-testid="file-input"
+		class="sr-only"
+		type="file"
+		accept="video/*"
+		{multiple}
+		onchange={pick}
+	/>
 	<h2 class="text-2xl font-semibold">Drop a video here</h2>
 	<p class="text-base-content/70">
 		Or click to choose a file. You can also drag a video straight out of the Photos app.

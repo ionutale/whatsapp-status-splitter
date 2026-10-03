@@ -53,8 +53,9 @@ network each time and nothing is cached between visits.
 
 1. **Load a video** — drag one onto the drop zone, click to choose a file, or
    drag a video straight out of the macOS Photos app into the page (it arrives
-   as a normal file drop). One video at a time; loading another replaces the
-   current project.
+   as a normal file drop). Loading another replaces the current project.
+   Selecting or dropping **two or more** files at once enters
+   [batch mode](#batch-mode) instead.
 2. **Split** — the video is auto-split into equal clips of at most the max clip
    length. Change **Max clip length** and press **Reset to auto-split** to
    re-split.
@@ -71,6 +72,30 @@ network each time and nothing is cached between visits.
 Exports can optionally be center-cropped to 9:16 for full-screen statuses
 (toggle in the export panel).
 
+### Batch mode
+
+Selecting or dropping **two or more videos at once** (the picker accepts
+multiple files) opens a **batch queue** instead of the editor. Press **Start**
+to process them — nothing runs until you do. Each file is read, auto-split with
+the current **max clip length**, and encoded with the current **preset** and
+**9:16 crop** setting, sequentially, one file at a time. When every file is done
+you get **one ZIP** (`status_batch.zip`) containing each file's parts under its
+own folder (`<name>/<name>_partNN.mp4`).
+
+- **Sequential, not parallel:** one clip is encoded at a time, so a batch takes
+  as long as the sum of its files — slower than processing them one by one.
+- **Held in memory:** all encoded parts stay in memory until the ZIP is
+  assembled. Fine for phone-sized videos; not intended for a large batch of long
+  clips.
+- **Unreadable files fail alone:** a file that can't be read is marked **failed**
+  with the reason and the rest of the queue continues. Batch mode has no
+  compatibility mode — open that file individually to convert it.
+- **Cancel** stops after the clip currently encoding, discards the partial ZIP,
+  and returns the queue to idle (no partial download).
+
+Batch mode never touches the editor: the single-file editor state is left
+exactly as it was.
+
 Settings and the clip layouts of your most recent files are remembered locally
 (localStorage); nothing leaves the machine.
 
@@ -78,12 +103,12 @@ Settings and the clip layouts of your most recent files are remembered locally
 
 Global constraints:
 
-| Constraint         | Value                                               |
-| ------------------ | --------------------------------------------------- |
-| Max clip length    | Default **30s**, configurable **1–300s**            |
-| Min clip length    | **0.5s**                                            |
-| WhatsApp file size | Target **≤16MB** (encodes to ~15MB with headroom)   |
-| Supported input    | One video at a time; any codec WebCodecs can decode |
+| Constraint         | Value                                                                  |
+| ------------------ | ---------------------------------------------------------------------- |
+| Max clip length    | Default **30s**, configurable **1–300s**                               |
+| Min clip length    | **0.5s**                                                               |
+| WhatsApp file size | Target **≤16MB** (encodes to ~15MB with headroom)                      |
+| Supported input    | One video at a time (or a batch queue); any codec WebCodecs can decode |
 
 Quality presets:
 
@@ -170,6 +195,9 @@ validate true WhatsApp-Status acceptance. Run `pnpm dev`, then walk through:
 - [ ] A **rotated** source exports **upright**.
 - [ ] **Load** a video Chrome cannot decode (e.g. an old AVI) → **compatibility
       mode** converts it → it **splits and exports**.
+- [ ] **Batch mode:** select **two real videos at once** → **Start** → one
+      `status_batch.zip` with a folder per file; a corrupt file fails alone and
+      the rest of the queue still completes.
 
 ## Project layout
 
@@ -179,8 +207,8 @@ src/
 └─ lib/
    ├─ domain/              # Pure logic: segments, timeline math, bitrate/presets, naming, formatting
    ├─ media/               # Browser I/O: inspect, thumbnails, export/encode, zip, download, share
-   ├─ state/               # Svelte 5 runes stores: project + export
-   └─ components/          # UI: drop zone, timeline, segment bar/panel, preview, export panel
+   ├─ state/               # Svelte 5 runes stores: project + export + batch
+   └─ components/          # UI: drop zone, timeline, segment bar/panel, preview, export/batch panels
 ```
 
 ## Non-goals
@@ -190,4 +218,5 @@ src/
 - No scene/silence-based auto-splitting — equal chunks plus manual handles only.
 - No drag-to-reorder; clip order always follows timeline order.
 - No offline mode — installable as a PWA, but there is no service worker.
-- No multi-file queue — one video at a time.
+- No multi-file _editing_ — batch mode only queues whole files and splits each
+  independently; the editor still edits one video at a time.
