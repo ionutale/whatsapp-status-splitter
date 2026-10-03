@@ -1,5 +1,7 @@
 <script lang="ts">
 	import DropZone from '../lib/components/DropZone.svelte';
+	import VideoPreview from '../lib/components/VideoPreview.svelte';
+	import { formatClock } from '../lib/domain/format';
 	import { assertDecodable, inspectFile } from '../lib/media/inspect';
 	import { project } from '../lib/state/project.svelte';
 
@@ -7,6 +9,8 @@
 	let loadError = $state<string | null>(null);
 	let objectUrl = $state<string | null>(null);
 	let loadToken = 0;
+	let currentTime = $state(0);
+	let seekRequest = $state<{ t: number } | null>(null);
 
 	async function handleFile(file: File) {
 		if (project.dirty && !confirm('Discard the current editing state and load a new video?'))
@@ -49,7 +53,14 @@
 	<header class="flex items-center justify-between">
 		<h1 class="text-xl font-bold">WhatsApp Status Splitter</h1>
 		{#if project.meta}
-			<span class="text-sm text-base-content/70" data-testid="file-name">{project.file?.name}</span>
+			<div class="flex items-center gap-3">
+				<span class="text-sm text-base-content/70" data-testid="file-name"
+					>{project.file?.name}</span
+				>
+				<span class="font-mono text-sm text-base-content/70 tabular-nums" data-testid="preview-time"
+					>{formatClock(currentTime)}</span
+				>
+			</div>
 		{/if}
 	</header>
 
@@ -66,7 +77,16 @@
 	{:else}
 		<section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 			<div class="flex flex-col gap-4">
-				<div class="rounded-box bg-base-200 p-4" data-testid="preview-slot">Preview</div>
+				<VideoPreview
+					src={objectUrl!}
+					range={project.selected
+						? { start: project.selected.start, end: project.selected.end }
+						: null}
+					bind:loop={project.loopPreview}
+					{seekRequest}
+					onSeekHandled={() => (seekRequest = null)}
+					onTime={(time) => (currentTime = time)}
+				/>
 				<div class="rounded-box bg-base-200 p-4" data-testid="timeline-slot">Timeline</div>
 			</div>
 			<div class="flex flex-col gap-4">
