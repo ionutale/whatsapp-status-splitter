@@ -42,9 +42,24 @@ test('dragging a clip start moves only that clip and respects clamps', async ({ 
 	const start = Number(await second.getAttribute('data-start'));
 	const duration = Number(await second.getAttribute('data-duration'));
 	expect(start).toBeGreaterThan(2);
-	expect(duration).toBeLessThanOrEqual(2.0001);
+	expect(duration).toBeLessThan(1.999);
+	// The end edge is pinned: a whole-clip translate would move it too.
+	await expect(second).toHaveAttribute('data-end', '4.000');
 	// First clip did not move.
 	await expect(page.getByTestId('segment-bar').nth(0)).toHaveAttribute('data-start', '0.000');
+
+	// Dragging the start back left past the clip's origin clamps at the
+	// max-length boundary: start can never leave [end - max, end - min].
+	const boxLeft = (await handle.boundingBox())!;
+	await page.mouse.move(boxLeft.x + boxLeft.width / 2, boxLeft.y + boxLeft.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(boxLeft.x + boxLeft.width / 2 - 240, boxLeft.y + boxLeft.height / 2, {
+		steps: 10
+	});
+	await page.mouse.up();
+
+	await expect(second).toHaveAttribute('data-start', '2.000');
+	await expect(second).toHaveAttribute('data-duration', '2.000');
 });
 
 test('split, delete and reset edit the clip set', async ({ page }) => {
@@ -55,8 +70,16 @@ test('split, delete and reset edit the clip set', async ({ page }) => {
 	await expect(page.getByTestId('segment-bar')).toHaveCount(4);
 	await page.getByTestId('btn-delete').click();
 	await expect(page.getByTestId('segment-bar')).toHaveCount(3);
+	// Mutate the selected clip so a no-op reset would leave the mutation visible.
+	const durationField = page.getByTestId('time-field-duration');
+	await durationField.fill('1.5');
+	await durationField.press('Enter');
+	await expect(page.getByTestId('segment-bar').nth(0)).toHaveAttribute('data-duration', '1.500');
 	await page.getByTestId('btn-reset').click();
 	await expect(page.getByTestId('segment-bar')).toHaveCount(3);
+	await expect(page.getByTestId('segment-bar').nth(0)).toHaveAttribute('data-duration', '2.000');
+	await expect(page.getByTestId('segment-bar').nth(1)).toHaveAttribute('data-duration', '2.000');
+	await expect(page.getByTestId('segment-bar').nth(2)).toHaveAttribute('data-duration', '1.000');
 });
 
 test('exports a single clip: valid MP4, exact duration, part01 name', async ({ page }) => {
@@ -111,6 +134,8 @@ test('rotated portrait source exports portrait', async ({ page }) => {
 	const download = await downloadPromise;
 	const meta = await readMediaMeta((await download.path())!);
 	expect(meta.displayHeight).toBeGreaterThan(meta.displayWidth);
+	// Rotation is baked into the pixels, not carried as metadata.
+	expect(meta.rotation).toBe(0);
 });
 
 test('video without audio exports a silent MP4', async ({ page }) => {
