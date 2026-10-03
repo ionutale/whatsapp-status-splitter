@@ -40,6 +40,7 @@
 	async function exportClip(job: (typeof jobs)[number]) {
 		if (!project.file) return;
 		await state.runJobs(project.file, [job], { finish: 'download-first' });
+		if (state.statuses[job.id] !== 'done') return;
 		const blob = state.results[job.id];
 		if (blob) cache.set(job.id, { key: jobKey(job), blob });
 	}
@@ -56,7 +57,7 @@
 		let blob = cached?.key === key ? cached.blob : undefined;
 		if (!blob) {
 			await state.runJobs(project.file, [job], { finish: 'none' });
-			blob = state.results[job.id];
+			blob = state.statuses[job.id] === 'done' ? state.results[job.id] : undefined;
 			if (blob) cache.set(job.id, { key, blob });
 		}
 		if (!blob) return;

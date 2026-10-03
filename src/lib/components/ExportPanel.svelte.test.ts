@@ -44,6 +44,25 @@ function makeCountingExporter() {
 	return { state, blobs };
 }
 
+function makeFailAfterFirstExporter() {
+	const invocations: number[] = [];
+	const state = new ExportState({
+		encodeClip: () => {
+			invocations.push(invocations.length + 1);
+			if (invocations.length > 1) {
+				return { result: Promise.reject(new Error('encode boom')), cancel: async () => {} };
+			}
+			return {
+				result: Promise.resolve(new Blob([new Uint8Array([9])])),
+				cancel: async () => {}
+			};
+		},
+		downloadBlob: () => {},
+		makeZip: async () => fakeBlob
+	});
+	return { state, invocations };
+}
+
 describe('ExportPanel', () => {
 	beforeEach(() => {
 		project.begin(new File([], 'vid.mp4'));
@@ -105,5 +124,38 @@ describe('ExportPanel', () => {
 		const file = share.mock.calls[0][0].files[0];
 		expect(file.size).toBe(blobs[1].size);
 		expect(file.size).not.toBe(blobs[0].size);
+	});
+
+	it('never shares or caches a stale blob after a failed re-encode', async () => {
+		const { state, invocations } = makeFailAfterFirstExporter();
+		const share = vi.fn<(data: { files: File[] }) => Promise<void>>(async () => {});
+		vi.stubGlobal('navigator', { canShare: () => true, share });
+		const screen = await render(ExportPanel, { exporter: state });
+		const id = project.sortedSegments[0].id;
+
+		// First encode succeeds, populating state.results[id].
+		(
+			screen.container.querySelector('[data-testid="btn-export-clip"]') as HTMLButtonElement
+		).click();
+		await expect.poll(() => invocations.length).toBe(1);
+
+		// Change the preset so Share must re-encode; that re-encode fails.
+		const select = screen.container.querySelector(
+			'[data-testid="preset-select"]'
+		) as HTMLSelectElement;
+		select.value = 'small';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		(screen.container.querySelector('[data-testid="btn-share-clip"]') as HTMLButtonElement).click();
+		await expect.poll(() => state.statuses[id]).toBe('failed');
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(share).not.toHaveBeenCalled();
+
+		// No stale cache entry: a second Share re-encodes instead of reusing.
+		(screen.container.querySelector('[data-testid="btn-share-clip"]') as HTMLButtonElement).click();
+		await expect.poll(() => invocations.length).toBe(3);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(share).not.toHaveBeenCalled();
 	});
 });
