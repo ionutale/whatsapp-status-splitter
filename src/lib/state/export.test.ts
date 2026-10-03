@@ -43,16 +43,21 @@ function fakeEncoder() {
 	return { factory, calls, push: (fn: () => EncodeHandle) => factories.push(fn) };
 }
 
-const makeDeps = (encoder = fakeEncoder()) => {
+const makeDeps = (
+	encoder = fakeEncoder(),
+	makeZipOverride?: (entries: { name: string; blob: Blob }[]) => Promise<Blob>
+) => {
 	const downloads: string[] = [];
 	const zips: { name: string; count: number }[] = [];
 	const state = new ExportState({
 		encodeClip: encoder.factory,
 		downloadBlob: (_blob, name) => downloads.push(name),
-		makeZip: async (entries) => {
-			zips.push({ name: 'zip', count: entries.length });
-			return new Blob([new Uint8Array([1])]);
-		}
+		makeZip:
+			makeZipOverride ??
+			(async (entries) => {
+				zips.push({ name: 'zip', count: entries.length });
+				return new Blob([new Uint8Array([1])]);
+			})
 	});
 	return { state, encoder, downloads, zips };
 };
@@ -119,5 +124,60 @@ describe('ExportState', () => {
 		expect(state.statuses['a']).toBe('failed');
 		await state.runJobs(new File([], 'v.mp4'), [job('a')], { finish: 'none' });
 		expect(state.statuses['a']).toBe('done');
+	});
+
+	it('skips the zip when a cancel arrives after a partial success', async () => {
+		const { state, encoder, downloads } = makeDeps();
+		const d = deferred<Blob>();
+		encoder.push(() => ({
+			result: Promise.resolve(new Blob([new Uint8Array([1])])),
+			cancel: async () => {}
+		}));
+		encoder.push(() => ({
+			result: d.promise,
+			cancel: async () => {
+				d.reject(new Error('ConversionCanceledError'));
+			}
+		}));
+		const run = state.runJobs(new File([], 'v.mp4'), [job('a'), job('b')], {
+			finish: 'zip',
+			zipName: 'all.zip'
+		});
+		await Promise.resolve();
+		await state.cancel();
+		await run;
+		expect(downloads).toEqual([]);
+		expect(state.results['a']).toBeInstanceOf(Blob);
+		expect(state.statuses['a']).toBe('done');
+		expect(state.statuses['b']).toBe('canceled');
+		expect(state.busy).toBe(false);
+		expect(state.runError).toBeNull();
+	});
+
+	it('surfaces a finish failure and unlocks', async () => {
+		const { state } = makeDeps(fakeEncoder(), async () => {
+			throw new Error('zip boom');
+		});
+		await state.runJobs(new File([], 'v.mp4'), [job('a')], {
+			finish: 'zip',
+			zipName: 'all.zip'
+		});
+		expect(state.busy).toBe(false);
+		expect(state.runError).toContain('zip boom');
+	});
+
+	it('ignores a second run while one is already in flight', async () => {
+		const { state, encoder } = makeDeps();
+		const d = deferred<Blob>();
+		encoder.push(() => ({ result: d.promise, cancel: async () => {} }));
+		const first = state.runJobs(new File([], 'v.mp4'), [job('a')], { finish: 'none' });
+		await Promise.resolve();
+		await state.runJobs(new File([], 'v.mp4'), [job('b')], { finish: 'none' });
+		expect(encoder.calls.map((call) => call.id)).toEqual(['a']);
+		expect(state.statuses['b']).toBeUndefined();
+		d.resolve(new Blob([new Uint8Array([1])]));
+		await first;
+		expect(state.statuses['a']).toBe('done');
+		expect(state.busy).toBe(false);
 	});
 });
