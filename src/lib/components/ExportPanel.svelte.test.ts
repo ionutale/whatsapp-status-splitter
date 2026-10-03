@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { VideoMeta } from '../domain/bitrate';
 import { ExportState } from '../state/export.svelte';
@@ -30,10 +30,29 @@ function makeExporter(downloads: string[]) {
 	});
 }
 
+function makeCountingExporter() {
+	const blobs: Blob[] = [];
+	const state = new ExportState({
+		encodeClip: () => {
+			const blob = new Blob([new Uint8Array(blobs.length + 1)]);
+			blobs.push(blob);
+			return { result: Promise.resolve(blob), cancel: async () => {} };
+		},
+		downloadBlob: () => {},
+		makeZip: async () => fakeBlob
+	});
+	return { state, blobs };
+}
+
 describe('ExportPanel', () => {
 	beforeEach(() => {
 		project.begin(new File([], 'vid.mp4'));
 		project.ready(80, meta());
+		project.preset = 'whatsapp';
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
 	});
 
 	it('lists one row per clip with estimated sizes', async () => {
@@ -59,5 +78,32 @@ describe('ExportPanel', () => {
 		select.value = 'small';
 		select.dispatchEvent(new Event('change', { bubbles: true }));
 		expect(project.preset).toBe('small');
+	});
+
+	it('re-encodes for share when the preset changed since the last export', async () => {
+		const { state, blobs } = makeCountingExporter();
+		const share = vi.fn<(data: { files: File[] }) => Promise<void>>(async () => {});
+		vi.stubGlobal('navigator', { canShare: () => true, share });
+		const screen = await render(ExportPanel, { exporter: state });
+
+		(
+			screen.container.querySelector('[data-testid="btn-export-clip"]') as HTMLButtonElement
+		).click();
+		await expect.poll(() => blobs.length).toBe(1);
+
+		const select = screen.container.querySelector(
+			'[data-testid="preset-select"]'
+		) as HTMLSelectElement;
+		select.value = 'small';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		(screen.container.querySelector('[data-testid="btn-share-clip"]') as HTMLButtonElement).click();
+		await expect.poll(() => blobs.length).toBe(2);
+		await expect.poll(() => share.mock.calls.length).toBe(1);
+
+		const file = share.mock.calls[0][0].files[0];
+		expect(file.size).toBe(blobs[1].size);
+		expect(file.size).not.toBe(blobs[0].size);
 	});
 });

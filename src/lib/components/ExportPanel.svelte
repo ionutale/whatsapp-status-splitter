@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteMap } from 'svelte/reactivity';
 	import { buildOutputPlan } from '../domain/bitrate';
 	import { clipFileName, sanitizeBaseName, zipFileName } from '../domain/naming';
 	import { downloadBlob } from '../media/download';
@@ -28,9 +29,19 @@
 
 	const formatSize = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
+	// `state.results` is keyed only by segment id, which survives boundary and
+	// preset edits. Cache the exact plan+bounds a blob was encoded for so Share
+	// never reuses an encode that no longer matches the current row.
+	type CacheEntry = { key: string; blob: Blob };
+	const cache = new SvelteMap<string, CacheEntry>();
+	const jobKey = (job: (typeof jobs)[number]) =>
+		`${job.plan.width}x${job.plan.height}/${job.plan.videoKbps}/${job.segment.start}-${job.segment.end}`;
+
 	async function exportClip(job: (typeof jobs)[number]) {
 		if (!project.file) return;
 		await state.runJobs(project.file, [job], { finish: 'download-first' });
+		const blob = state.results[job.id];
+		if (blob) cache.set(job.id, { key: jobKey(job), blob });
 	}
 
 	async function exportAll() {
@@ -40,10 +51,13 @@
 
 	async function shareClip(job: (typeof jobs)[number]) {
 		if (!project.file) return;
-		let blob = state.results[job.id];
+		const key = jobKey(job);
+		const cached = cache.get(job.id);
+		let blob = cached?.key === key ? cached.blob : undefined;
 		if (!blob) {
 			await state.runJobs(project.file, [job], { finish: 'none' });
 			blob = state.results[job.id];
+			if (blob) cache.set(job.id, { key, blob });
 		}
 		if (!blob) return;
 		try {

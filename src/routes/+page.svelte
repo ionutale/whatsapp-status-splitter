@@ -18,8 +18,17 @@
 	let preview = $state<VideoPreview | null>(null);
 
 	function handleKeydown(event: KeyboardEvent) {
-		const target = event.target as HTMLElement | null;
-		if (event.key === ' ' && target && !['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) {
+		if (event.repeat) return;
+		const target = event.target;
+		if (
+			target instanceof Element &&
+			target.closest(
+				'button, a, summary, [role="button"], [contenteditable], input, select, textarea'
+			)
+		) {
+			return;
+		}
+		if (event.key === ' ') {
 			event.preventDefault();
 			preview?.toggle();
 		}
