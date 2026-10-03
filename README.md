@@ -71,6 +71,8 @@ network each time and nothing is cached between visits.
 Exports can optionally be center-cropped to 9:16 for full-screen statuses
 (toggle in the export panel).
 
+Settings and per-file clip layouts are remembered locally (localStorage); nothing leaves the machine.
+
 ## Limits & presets
 
 Global constraints:
@@ -101,6 +103,25 @@ versions may accept 60–90s clips, so the max clip length is configurable up to
   decoded, the app shows an in-app notice recommending Chrome or an H.264 MP4.
   This is a codec-level, programmatic check, so Chrome on macOS can hit the same
   notice for an undecodable codec.
+
+## Compatibility mode
+
+When the app can't read a video at all — the browser rejects the container or
+codec (e.g. an old AVI or MOV) — it offers **compatibility mode**: a local,
+on-device transcode to a standard H.264/AAC MP4 via
+[ffmpeg.wasm](https://ffmpegwasm.netlify.app/), which is then loaded through the
+normal split/export pipeline.
+
+- **When it triggers:** only when the initial file read fails. Videos that load
+  normally never touch it.
+- **Single-threaded by design:** the single-thread `@ffmpeg/core` is used (no
+  COOP/COEP headers, no multi-thread build). It is **slow on long videos** — a
+  minute of phone footage can take several minutes to convert.
+- **Served by the app itself:** the ffmpeg core assets (~20MB wasm) are bundled
+  and served by this app, so the first use downloads a few MB. **Nothing is
+  uploaded elsewhere** — the transcode happens entirely on your machine.
+- **Cancel:** you can cancel mid-conversion; nothing is loaded until the
+  converted file is ready.
 
 ## Testing
 
@@ -145,6 +166,8 @@ validate true WhatsApp-Status acceptance. Run `pnpm dev`, then walk through:
 - [ ] Exported file **plays in QuickTime**.
 - [ ] Exported file **uploads to WhatsApp Status**.
 - [ ] A **rotated** source exports **upright**.
+- [ ] **Load** a video Chrome cannot decode (e.g. an old AVI) → **compatibility
+      mode** converts it → it **splits and exports**.
 
 ## Project layout
 

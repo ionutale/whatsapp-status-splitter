@@ -18,6 +18,11 @@
 	let currentTime = $state(0);
 	let seekRequest = $state<{ t: number } | null>(null);
 	let preview = $state<VideoPreview | null>(null);
+	let compatFile = $state<File | null>(null);
+	let converting = $state(false);
+	let compatProgress = $state(0);
+	let compatError = $state<string | null>(null);
+	let compatController: AbortController | null = null;
 
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.repeat) return;
@@ -64,9 +69,49 @@
 			if (token !== loadToken) return;
 			console.error('[load] failed to load video', error);
 			loadError = error instanceof Error ? error.message : String(error);
+			// Duck-type the InspectionError name so this keeps working when the
+			// inspect module is mocked in tests without re-exporting the class.
+			if (error instanceof Error && error.name === 'InspectionError') {
+				compatFile = file;
+			}
 		} finally {
 			if (token === loadToken) loading = false;
 		}
+	}
+
+	async function startCompat() {
+		if (!compatFile || converting) return;
+		const controller = new AbortController();
+		compatController = controller;
+		converting = true;
+		compatProgress = 0;
+		compatError = null;
+		try {
+			const { convertToCompatibleMp4 } = await import('../lib/media/ffmpeg');
+			const converted = await convertToCompatibleMp4(compatFile, {
+				onProgress: (ratio) => {
+					compatProgress = ratio;
+				},
+				signal: controller.signal
+			});
+			compatFile = null;
+			converting = false;
+			compatController = null;
+			await handleFile(converted);
+		} catch (error) {
+			converting = false;
+			compatController = null;
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				compatProgress = 0;
+				compatError = null;
+			} else {
+				compatError = error instanceof Error ? error.message : String(error);
+			}
+		}
+	}
+
+	function cancelCompat() {
+		compatController?.abort();
 	}
 
 	function selectClip(id: string) {
@@ -138,6 +183,36 @@
 
 	{#if !project.meta}
 		{#if loading}<span class="loading loading-spinner"></span>{/if}
+		{#if compatFile}
+			<div class="alert alert-warning" role="alert" data-testid="compat-notice">
+				<p>This video's format can't be read by this browser, so it can't be split yet.</p>
+				{#if compatError}
+					<p class="text-error" role="alert" data-testid="compat-error">{compatError}</p>
+				{/if}
+				{#if converting}
+					<p data-testid="compat-progress">
+						Converting to a compatible format… {Math.round(compatProgress * 100)}%
+					</p>
+					<button
+						type="button"
+						class="btn btn-sm"
+						data-testid="compat-cancel"
+						onclick={cancelCompat}
+					>
+						Cancel
+					</button>
+				{:else}
+					<button
+						type="button"
+						class="btn btn-sm"
+						data-testid="compat-convert"
+						onclick={startCompat}
+					>
+						Try compatibility mode (slower)
+					</button>
+				{/if}
+			</div>
+		{/if}
 		<DropZone onFile={handleFile} error={loadError} />
 	{:else}
 		<section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
