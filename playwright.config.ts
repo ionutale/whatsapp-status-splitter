@@ -1,12 +1,18 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-	// Build with pnpm, then serve from the local vite binary directly: pnpm runs
-	// script children in their own process group, so `pnpm preview` survives
-	// Playwright's webServer teardown and hangs the run.
-	webServer: {
-		command: 'pnpm build && ./node_modules/.bin/vite preview',
-		port: 4173
+	testDir: 'e2e',
+	fullyParallel: true,
+	reporter: 'list',
+	use: {
+		baseURL: 'http://localhost:4173',
+		viewport: { width: 1440, height: 900 },
+		trace: 'on-first-retry'
 	},
-	testMatch: '**/*.e2e.{ts,js}'
+	webServer: {
+		command: './node_modules/.bin/vite dev --port 4173 --strictPort',
+		url: 'http://localhost:4173',
+		reuseExistingServer: !process.env.CI
+	},
+	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
 });
