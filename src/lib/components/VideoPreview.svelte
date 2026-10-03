@@ -60,6 +60,7 @@
 </script>
 
 <div class="flex flex-col gap-2">
+	<!-- svelte-ignore a11y_media_has_caption -->
 	<video
 		bind:this={video}
 		{src}
