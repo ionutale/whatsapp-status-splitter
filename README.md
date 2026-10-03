@@ -30,6 +30,20 @@ pnpm build     # static output in build/, with build/index.html as the SPA fallb
 pnpm preview   # serve the built output locally
 ```
 
+## Install as an app
+
+The app is installable as a PWA — no store, no account:
+
+- **iPhone / iPad** — open the site in Safari, tap **Share**, then **Add to Home
+  Screen**.
+- **Android** — open it in Chrome, open the browser menu, then tap **Install
+  app**.
+- **Desktop Chrome** — click the install icon in the address bar.
+
+Everything is processed on-device, so export speed depends on your phone's CPU
+and codec support. There is **no service worker and no offline mode**: the page
+must load from the network each time and nothing is cached between visits.
+
 ## Usage
 
 1. **Load a video** — drag one onto the drop zone, click to choose a file, or
@@ -48,6 +62,9 @@ pnpm preview   # serve the built output locally
    share sheet (directly to WhatsApp / AirDrop), or **Export all (ZIP)** to get
    every clip in one archive. Clips are encoded sequentially with live progress,
    cancel, and retry.
+
+Exports can optionally be center-cropped to 9:16 for full-screen statuses
+(toggle in the export panel).
 
 ## Limits & presets
 
@@ -143,6 +160,6 @@ src/
 - No cropping/aspect-ratio changes, filters, music, watermarks, subtitles, or speed changes.
 - No scene/silence-based auto-splitting — equal chunks plus manual handles only.
 - No drag-to-reorder; clip order always follows timeline order.
-- No mobile/PWA target; desktop Chrome on macOS only.
+- No offline mode — installable as a PWA, but there is no service worker.
 - No ffmpeg.wasm fallback in v1.
 - No multi-file queue — one video at a time.
