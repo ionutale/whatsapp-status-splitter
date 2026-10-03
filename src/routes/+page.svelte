@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DropZone from '../lib/components/DropZone.svelte';
+	import SegmentPanel from '../lib/components/SegmentPanel.svelte';
 	import Timeline from '../lib/components/Timeline.svelte';
 	import VideoPreview from '../lib/components/VideoPreview.svelte';
 	import { formatClock } from '../lib/domain/format';
@@ -135,7 +136,7 @@
 				/>
 			</div>
 			<div class="flex flex-col gap-4">
-				<div class="rounded-box bg-base-200 p-4" data-testid="panel-slot">Clip controls</div>
+				<SegmentPanel />
 				<div class="rounded-box bg-base-200 p-4" data-testid="export-slot">Export</div>
 			</div>
 		</section>
