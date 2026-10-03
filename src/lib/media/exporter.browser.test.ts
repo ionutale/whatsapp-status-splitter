@@ -128,6 +128,35 @@ describe('realEncodeClip', () => {
 		}
 	});
 
+	it('encodes when the plan carries a fractional video bitrate', async () => {
+		const file = await loadFixture(tiny5sUrl, 'tiny-5s.mp4');
+		const plan = {
+			width: 1280,
+			height: 720,
+			fit: 'contain' as const,
+			frameRate: 30,
+			videoKbps: 1801.37984,
+			audioKbps: 128,
+			estimatedBytes: 0
+		};
+		const handle = realEncodeClip({
+			file,
+			segment: { id: 'a', start: 0, end: 1 },
+			plan,
+			onProgress: () => {}
+		});
+		const blob = await handle.result;
+		expect(await isFtyp(blob)).toBe(true);
+
+		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+		try {
+			const duration = await input.computeDuration();
+			expect(Math.abs(duration - 1)).toBeLessThanOrEqual(0.35);
+		} finally {
+			input.dispose();
+		}
+	});
+
 	it('discards audio when the plan targets no audio', async () => {
 		const file = await loadFixture(noAudioUrl, 'tiny-noaudio.mp4');
 		const { meta } = await inspectFile(file);

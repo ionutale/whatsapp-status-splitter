@@ -66,7 +66,7 @@ export const realEncodeClip: EncodeClipFactory = ({ file, segment, plan, onProgr
 				trim: { start: segment.start, end: segment.end },
 				video: {
 					codec: videoCodec,
-					quality: new Quality({ bitrate: plan.videoKbps * 1000 }),
+					quality: new Quality({ bitrate: Math.round(plan.videoKbps * 1000) }),
 					width: plan.width,
 					height: plan.height,
 					fit: plan.fit,
@@ -76,7 +76,7 @@ export const realEncodeClip: EncodeClipFactory = ({ file, segment, plan, onProgr
 				},
 				audio:
 					plan.audioKbps > 0
-						? { codec: 'aac', quality: new Quality({ bitrate: plan.audioKbps * 1000 }) }
+						? { codec: 'aac', quality: new Quality({ bitrate: Math.round(plan.audioKbps * 1000) }) }
 						: { discard: true }
 			});
 

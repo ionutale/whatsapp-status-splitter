@@ -34,6 +34,19 @@ describe('estimateBitrate', () => {
 		const { videoKbps } = estimateBitrate(500, 'whatsapp', true);
 		expect(videoKbps).toBe(800);
 	});
+	it('always produces integer video kbps inside the fractional window', () => {
+		for (const durationSec of [19, 60, 100, 124]) {
+			const { videoKbps } = estimateBitrate(durationSec, 'whatsapp', true);
+			expect(Number.isInteger(videoKbps)).toBe(true);
+			expect(videoKbps).toBeGreaterThanOrEqual(800);
+			expect(videoKbps).toBeLessThanOrEqual(6000);
+		}
+	});
+	it('rounds the target rate to the nearest integer (60s whatsapp with audio)', () => {
+		const { videoKbps, estimatedBytes } = estimateBitrate(60, 'whatsapp', true);
+		expect(videoKbps).toBe(1801);
+		expect(estimatedBytes).toBe(Math.round((((1801 + 128) * 1000) / 8) * 60));
+	});
 });
 
 describe('computeOutputSize', () => {

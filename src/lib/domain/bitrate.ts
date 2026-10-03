@@ -76,7 +76,7 @@ export function estimateBitrate(
 	if (limits.targetBytes !== null && durationSec > 0) {
 		const targetKbit = (limits.targetBytes * 8) / 1000;
 		const wanted = (targetKbit * 0.92) / durationSec - audioKbps;
-		videoKbps = clampNumber(wanted, limits.minKbps, limits.maxKbps);
+		videoKbps = Math.round(clampNumber(wanted, limits.minKbps, limits.maxKbps));
 	}
 
 	const estimatedBytes = Math.round((((videoKbps + audioKbps) * 1000) / 8) * durationSec);
