@@ -16,7 +16,7 @@ describe('page shell', () => {
 		await expect
 			.poll(() => screen.container.querySelector('[data-testid="file-name"]')?.textContent)
 			.toContain('tiny-5s.mp4');
-		expect(screen.container.querySelector('[data-testid="timeline-slot"]')).not.toBeNull();
+		expect(screen.container.querySelector('[data-testid="timeline"]')).not.toBeNull();
 	});
 
 	it('accepts a file dropped anywhere on the page', async () => {

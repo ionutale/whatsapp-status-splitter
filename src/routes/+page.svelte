@@ -1,8 +1,10 @@
 <script lang="ts">
 	import DropZone from '../lib/components/DropZone.svelte';
+	import Timeline from '../lib/components/Timeline.svelte';
 	import VideoPreview from '../lib/components/VideoPreview.svelte';
 	import { formatClock } from '../lib/domain/format';
 	import { assertDecodable, inspectFile } from '../lib/media/inspect';
+	import { extractThumbnails } from '../lib/media/thumbnails';
 	import { project } from '../lib/state/project.svelte';
 
 	let loading = $state(false);
@@ -18,6 +20,8 @@
 		const token = ++loadToken;
 		loadError = null;
 		project.begin(file);
+		currentTime = 0;
+		seekRequest = null;
 		loading = true;
 		try {
 			const { duration, meta } = await inspectFile(file);
@@ -38,6 +42,29 @@
 			if (token === loadToken) loading = false;
 		}
 	}
+
+	function selectClip(id: string) {
+		project.select(id);
+		const segment = project.segments.find((item) => item.id === id);
+		if (!segment) return;
+		currentTime = segment.start;
+		seekRequest = { t: segment.start };
+	}
+
+	$effect(() => {
+		const file = project.file;
+		const meta = project.meta;
+		if (!file || !meta) return;
+		let cancelled = false;
+		extractThumbnails(file, 30, 160, (thumb) => {
+			if (!cancelled) project.addThumb(thumb);
+		}).catch((error) => {
+			console.error('[thumbs] extraction failed', error);
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
 </script>
 
 <svelte:window
@@ -87,7 +114,21 @@
 					onSeekHandled={() => (seekRequest = null)}
 					onTime={(time) => (currentTime = time)}
 				/>
-				<div class="rounded-box bg-base-200 p-4" data-testid="timeline-slot">Timeline</div>
+				<Timeline
+					duration={project.duration}
+					segments={project.sortedSegments}
+					selectedId={project.selectedId}
+					{currentTime}
+					bind:zoom={project.zoom}
+					thumbs={project.thumbs}
+					coverage={project.coverage}
+					onSeek={(time) => {
+						currentTime = time;
+						seekRequest = { t: time };
+					}}
+					onSelect={selectClip}
+					onSegmentChange={(id, next, moved) => project.updateSegment(id, next, moved)}
+				/>
 			</div>
 			<div class="flex flex-col gap-4">
 				<div class="rounded-box bg-base-200 p-4" data-testid="panel-slot">Clip controls</div>

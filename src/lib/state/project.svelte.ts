@@ -128,6 +128,10 @@ export class ProjectState {
 		this.dirty = false;
 	}
 
+	addThumb(thumb: { time: number; url: string }): void {
+		this.thumbs = [...this.thumbs, thumb];
+	}
+
 	setThumbs(thumbs: { time: number; url: string }[]): void {
 		for (const thumb of this.thumbs) {
 			try {
