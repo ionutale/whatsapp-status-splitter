@@ -31,6 +31,12 @@ export default defineConfig({
 					browser: {
 						enabled: true,
 						provider: playwright(),
+						// The phone-first editor swaps below the `md` breakpoint
+						// (768px). Vitest's own default is 414×896 (phone-sized), so
+						// pin a desktop viewport here to keep the existing desktop
+						// page tests on the desktop branch. Tests that need a phone
+						// viewport call `page.viewport(390, 844)` explicitly.
+						viewport: { width: 1280, height: 720 },
 						instances: [{ browser: 'chromium', headless: true }]
 					},
 					include: ['src/**/*.browser.test.ts', 'src/**/*.svelte.test.ts'],

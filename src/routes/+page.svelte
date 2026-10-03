@@ -4,6 +4,8 @@
 	import ExportPanel from '../lib/components/ExportPanel.svelte';
 	import SegmentPanel from '../lib/components/SegmentPanel.svelte';
 	import Timeline from '../lib/components/Timeline.svelte';
+	import TrimBar from '../lib/components/TrimBar.svelte';
+	import ClipStrip from '../lib/components/ClipStrip.svelte';
 	import VideoPreview from '../lib/components/VideoPreview.svelte';
 	import { formatClock } from '../lib/domain/format';
 	import { assertDecodable, inspectFile, type InspectResult } from '../lib/media/inspect';
@@ -12,6 +14,7 @@
 	import { exportState } from '../lib/state/export.svelte';
 	import { project } from '../lib/state/project.svelte';
 	import { onDestroy } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 
 	let loading = $state(false);
 	let loadError = $state<string | null>(null);
@@ -25,6 +28,16 @@
 	let compatProgress = $state(0);
 	let compatError = $state<string | null>(null);
 	let compatController: AbortController | null = null;
+
+	// Phone-first layout: below the `md` breakpoint the editor swaps to a
+	// single-column touch UI. Desktop is untouched (the `{:else}` branch).
+	const isPhone = new MediaQuery('(max-width: 767px)');
+	const selectedIndex = $derived(
+		Math.max(
+			0,
+			project.sortedSegments.findIndex((segment) => segment.id === project.selectedId)
+		)
+	);
 
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.repeat) return;
@@ -228,7 +241,16 @@
 />
 
 <div class="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 p-4">
-	<header class="flex items-center justify-between">
+	<header
+		class="flex items-center justify-between"
+		class:sticky={isPhone.current}
+		class:top-0={isPhone.current}
+		class:z-10={isPhone.current}
+		class:flex-wrap={isPhone.current}
+		class:gap-2={isPhone.current}
+		class:bg-base-100={isPhone.current}
+		class:py-2={isPhone.current}
+	>
 		<h1 class="text-xl font-bold">WhatsApp Status Splitter</h1>
 		{#if project.meta}
 			<div class="flex items-center gap-3">
@@ -291,8 +313,8 @@
 		{/if}
 		<DropZone onFile={handleFile} onFiles={handleFiles} multiple error={loadError} />
 	{:else}
-		<section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-			<div class="flex flex-col gap-4">
+		{#if isPhone.current}
+			<div class="flex flex-col gap-4 pb-[env(safe-area-inset-bottom)]" data-testid="phone-editor">
 				<VideoPreview
 					bind:this={preview}
 					src={objectUrl!}
@@ -303,27 +325,64 @@
 					{seekRequest}
 					onSeekHandled={() => (seekRequest = null)}
 					onTime={(time) => (currentTime = time)}
+					tapToToggle
 				/>
-				<Timeline
-					duration={project.duration}
+				{#if project.selected}
+					<TrimBar
+						segment={project.selected}
+						index={selectedIndex}
+						duration={project.duration}
+						onChange={(id, next, moved) => project.updateSegment(id, next, moved)}
+						onScrub={(time) => (seekRequest = { t: Math.min(Math.max(time, 0), project.duration) })}
+						onSplit={() => project.splitSelected()}
+						onDelete={() => project.deleteSelected()}
+					/>
+				{/if}
+				<ClipStrip
 					segments={project.sortedSegments}
 					selectedId={project.selectedId}
-					{currentTime}
-					bind:zoom={project.zoom}
-					thumbs={project.thumbs}
-					coverage={project.coverage}
-					onSeek={(time) => {
-						currentTime = time;
-						seekRequest = { t: time };
-					}}
+					maxClipDuration={project.maxClipDuration}
 					onSelect={selectClip}
-					onSegmentChange={(id, next, moved) => project.updateSegment(id, next, moved)}
+					onMaxClipDurationChange={(seconds) => project.setMaxClipDuration(seconds)}
+					onReset={() => project.resetSplit()}
 				/>
-			</div>
-			<div class="flex flex-col gap-4">
-				<SegmentPanel />
 				<ExportPanel />
 			</div>
-		</section>
+		{:else}
+			<section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+				<div class="flex flex-col gap-4">
+					<VideoPreview
+						bind:this={preview}
+						src={objectUrl!}
+						range={project.selected
+							? { start: project.selected.start, end: project.selected.end }
+							: null}
+						bind:loop={project.loopPreview}
+						{seekRequest}
+						onSeekHandled={() => (seekRequest = null)}
+						onTime={(time) => (currentTime = time)}
+					/>
+					<Timeline
+						duration={project.duration}
+						segments={project.sortedSegments}
+						selectedId={project.selectedId}
+						{currentTime}
+						bind:zoom={project.zoom}
+						thumbs={project.thumbs}
+						coverage={project.coverage}
+						onSeek={(time) => {
+							currentTime = time;
+							seekRequest = { t: time };
+						}}
+						onSelect={selectClip}
+						onSegmentChange={(id, next, moved) => project.updateSegment(id, next, moved)}
+					/>
+				</div>
+				<div class="flex flex-col gap-4">
+					<SegmentPanel />
+					<ExportPanel />
+				</div>
+			</section>
+		{/if}
 	{/if}
 </div>

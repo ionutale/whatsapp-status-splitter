@@ -46,6 +46,7 @@
 				data-testid="clip-chip"
 				data-index={index}
 				data-selected={segment.id === selectedId}
+				aria-pressed={segment.id === selectedId}
 				onclick={() => onSelect(segment.id)}
 			>
 				{index + 1} · {formatClock(segment.end - segment.start)}
@@ -65,7 +66,9 @@
 			>
 				−
 			</button>
-			<span class="w-10 text-center text-sm" data-testid="max-clip-value">{maxClipDuration}s</span>
+			<span class="w-10 text-center text-sm" aria-live="polite" data-testid="max-clip-value"
+				>{maxClipDuration}s</span
+			>
 			<button
 				type="button"
 				class="btn min-h-11 min-w-11 btn-sm"

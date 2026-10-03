@@ -6,6 +6,7 @@
 		range = null,
 		loop = $bindable(true),
 		seekRequest = null,
+		tapToToggle = false,
 		onTime,
 		onSeekHandled
 	}: {
@@ -13,6 +14,7 @@
 		range?: Range;
 		loop?: boolean;
 		seekRequest?: { t: number } | null;
+		tapToToggle?: boolean;
 		onTime?: (time: number) => void;
 		onSeekHandled?: () => void;
 	} = $props();
@@ -69,6 +71,9 @@
 		onplay={() => (paused = false)}
 		onpause={() => (paused = true)}
 		ontimeupdate={handleTimeUpdate}
+		onclick={() => {
+			if (tapToToggle) toggle();
+		}}
 		data-testid="video"
 	></video>
 	<div class="flex items-center gap-2">

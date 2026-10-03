@@ -265,9 +265,6 @@
 </div>
 
 <style>
-	.trim-bar {
-		touch-action: none;
-	}
 	.handle {
 		touch-action: none;
 	}
