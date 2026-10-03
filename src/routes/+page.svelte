@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DropZone from '../lib/components/DropZone.svelte';
+	import ExportPanel from '../lib/components/ExportPanel.svelte';
 	import SegmentPanel from '../lib/components/SegmentPanel.svelte';
 	import Timeline from '../lib/components/Timeline.svelte';
 	import VideoPreview from '../lib/components/VideoPreview.svelte';
@@ -14,6 +15,15 @@
 	let loadToken = 0;
 	let currentTime = $state(0);
 	let seekRequest = $state<{ t: number } | null>(null);
+	let preview = $state<VideoPreview | null>(null);
+
+	function handleKeydown(event: KeyboardEvent) {
+		const target = event.target as HTMLElement | null;
+		if (event.key === ' ' && target && !['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) {
+			event.preventDefault();
+			preview?.toggle();
+		}
+	}
 
 	async function handleFile(file: File) {
 		if (project.dirty && !confirm('Discard the current editing state and load a new video?'))
@@ -73,6 +83,7 @@
 </script>
 
 <svelte:window
+	onkeydown={handleKeydown}
 	ondragover={(event) => event.preventDefault()}
 	ondrop={(event) => {
 		event.preventDefault();
@@ -110,6 +121,7 @@
 		<section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
 			<div class="flex flex-col gap-4">
 				<VideoPreview
+					bind:this={preview}
 					src={objectUrl!}
 					range={project.selected
 						? { start: project.selected.start, end: project.selected.end }
@@ -137,7 +149,7 @@
 			</div>
 			<div class="flex flex-col gap-4">
 				<SegmentPanel />
-				<div class="rounded-box bg-base-200 p-4" data-testid="export-slot">Export</div>
+				<ExportPanel />
 			</div>
 		</section>
 	{/if}
