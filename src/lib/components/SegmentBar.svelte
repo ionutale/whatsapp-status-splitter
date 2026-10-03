@@ -88,6 +88,7 @@
 		aria-valuenow={segment.start}
 		aria-valuemax={segment.end}
 		data-testid="handle-start"
+		onfocus={() => onSelect?.(segment.id)}
 		onpointerdown={(event) => startDrag('start', event)}
 		onpointermove={moveDrag}
 		onpointerup={endDrag}
@@ -107,6 +108,7 @@
 		aria-valuenow={segment.end}
 		aria-valuemax={100000}
 		data-testid="handle-end"
+		onfocus={() => onSelect?.(segment.id)}
 		onpointerdown={(event) => startDrag('end', event)}
 		onpointermove={moveDrag}
 		onpointerup={endDrag}

@@ -2,17 +2,12 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { buildOutputPlan } from '../domain/bitrate';
 	import { clipFileName, sanitizeBaseName, zipFileName } from '../domain/naming';
-	import { downloadBlob } from '../media/download';
-	import { realEncodeClip } from '../media/exporter';
 	import { canShareFiles, shareBlob } from '../media/share';
-	import { makeZip } from '../media/zip';
-	import { ExportState } from '../state/export.svelte';
+	import { exportState, type ExportState } from '../state/export.svelte';
 	import { project } from '../state/project.svelte';
 
 	let { exporter = null }: { exporter?: ExportState | null } = $props();
-	const state = $derived(
-		exporter ?? new ExportState({ encodeClip: realEncodeClip, downloadBlob, makeZip })
-	);
+	const state = $derived(exporter ?? exportState);
 
 	const base = $derived(sanitizeBaseName(project.file?.name ?? 'video'));
 	const jobs = $derived(

@@ -180,4 +180,44 @@ describe('ExportState', () => {
 		expect(state.statuses['a']).toBe('done');
 		expect(state.busy).toBe(false);
 	});
+
+	it('reset clears all state and discards a stale run’s late writes', async () => {
+		const { state, encoder, downloads } = makeDeps();
+		const d = deferred<Blob>();
+		encoder.push(() => ({ result: d.promise, cancel: async () => {} }));
+		const run = state.runJobs(new File([], 'v.mp4'), [job('a')], { finish: 'download-first' });
+		await Promise.resolve();
+		expect(state.statuses['a']).toBe('encoding');
+
+		state.reset();
+		expect(state.statuses).toEqual({});
+		expect(state.progress).toEqual({});
+		expect(state.errors).toEqual({});
+		expect(state.results).toEqual({});
+		expect(state.runError).toBeNull();
+
+		// A blob that resolves after reset must not repopulate the cleared maps.
+		d.resolve(new Blob([new Uint8Array([1])]));
+		await run;
+		expect(state.statuses).toEqual({});
+		expect(state.progress).toEqual({});
+		expect(state.errors).toEqual({});
+		expect(state.results).toEqual({});
+		expect(downloads).toEqual([]);
+		expect(state.busy).toBe(false);
+	});
+
+	it('reset clears a prior run error', async () => {
+		const { state } = makeDeps(fakeEncoder(), async () => {
+			throw new Error('zip boom');
+		});
+		await state.runJobs(new File([], 'v.mp4'), [job('a')], {
+			finish: 'zip',
+			zipName: 'all.zip'
+		});
+		expect(state.runError).toContain('zip boom');
+		state.reset();
+		expect(state.runError).toBeNull();
+		expect(state.statuses).toEqual({});
+	});
 });

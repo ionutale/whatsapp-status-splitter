@@ -7,6 +7,7 @@
 	import { formatClock } from '../lib/domain/format';
 	import { assertDecodable, inspectFile } from '../lib/media/inspect';
 	import { extractThumbnails } from '../lib/media/thumbnails';
+	import { exportState } from '../lib/state/export.svelte';
 	import { project } from '../lib/state/project.svelte';
 
 	let loading = $state(false);
@@ -40,6 +41,10 @@
 		const token = ++loadToken;
 		loadError = null;
 		project.begin(file);
+		// A new file invalidates any in-flight export: stop it and drop its state
+		// so the old run can't finish and fire a stray download/ZIP.
+		void exportState.cancel();
+		exportState.reset();
 		currentTime = 0;
 		seekRequest = null;
 		loading = true;

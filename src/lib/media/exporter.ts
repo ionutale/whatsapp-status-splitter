@@ -32,9 +32,15 @@ export type EncodeClipFactory = (args: EncodeArgs) => EncodeHandle;
 let aacReady: Promise<void> | null = null;
 
 function ensureAacSupport(): Promise<void> {
-	aacReady ??= canEncodeAudio('aac').then((supported) => {
-		if (!supported) registerAacEncoder();
-	});
+	aacReady ??= canEncodeAudio('aac')
+		.then((supported) => {
+			if (!supported) registerAacEncoder();
+		})
+		.catch((error) => {
+			// Don't memoize a rejection: a later export should be able to retry.
+			aacReady = null;
+			throw error;
+		});
 	return aacReady;
 }
 

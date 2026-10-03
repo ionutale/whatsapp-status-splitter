@@ -121,4 +121,18 @@ describe('SegmentBar', () => {
 		const bar = screen.container.querySelector('[data-testid="segment-bar"]') as HTMLElement;
 		expect(bar.className).toContain('selected');
 	});
+
+	it('selects the clip when a handle receives focus', async () => {
+		const onSelect = vi.fn();
+		const screen = await render(SegmentBar, {
+			segment,
+			lane: 0,
+			pxPerSecond: 10,
+			index: 0,
+			onSelect
+		});
+		const start = screen.container.querySelector('[data-testid="handle-start"]') as HTMLElement;
+		start.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		expect(onSelect).toHaveBeenCalledWith('s1');
+	});
 });

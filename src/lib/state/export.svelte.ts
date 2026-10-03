@@ -1,6 +1,8 @@
 import type { Segment } from '../domain/segments';
 import type { OutputPlan } from '../domain/bitrate';
-import type { EncodeClipFactory, EncodeHandle } from '../media/exporter';
+import { downloadBlob } from '../media/download';
+import { realEncodeClip, type EncodeClipFactory, type EncodeHandle } from '../media/exporter';
+import { makeZip } from '../media/zip';
 
 export type ClipStatus = 'idle' | 'encoding' | 'done' | 'failed' | 'canceled';
 
@@ -36,6 +38,7 @@ export class ExportState {
 	#deps: ExportDeps;
 	#current: EncodeHandle | null = null;
 	#cancelRequested = false;
+	#generation = 0;
 
 	constructor(deps: ExportDeps) {
 		this.#deps = deps;
@@ -44,13 +47,14 @@ export class ExportState {
 	async runJobs(file: File, jobs: ExportJob[], mode: FinishMode): Promise<void> {
 		if (this.busy) return;
 		this.busy = true;
+		const gen = this.#generation;
 		this.#cancelRequested = false;
 		this.runError = null;
 		const succeeded: { name: string; blob: Blob }[] = [];
 
 		try {
 			for (const job of jobs) {
-				if (this.#cancelRequested) break;
+				if (this.#cancelRequested || gen !== this.#generation) break;
 				this.statuses[job.id] = 'encoding';
 				this.progress[job.id] = 0;
 				this.errors[job.id] = '';
@@ -60,6 +64,7 @@ export class ExportState {
 					segment: job.segment,
 					plan: job.plan,
 					onProgress: (value) => {
+						if (gen !== this.#generation) return;
 						this.progress[job.id] = value;
 					}
 				});
@@ -67,11 +72,13 @@ export class ExportState {
 
 				try {
 					const blob = await handle.result;
+					if (gen !== this.#generation) break;
 					this.statuses[job.id] = 'done';
 					this.progress[job.id] = 1;
 					this.results[job.id] = blob;
 					succeeded.push({ name: job.fileName, blob });
 				} catch (error) {
+					if (gen !== this.#generation) break;
 					if (this.#cancelRequested || isCancelError(error)) {
 						this.statuses[job.id] = 'canceled';
 						this.#cancelRequested = true;
@@ -87,7 +94,7 @@ export class ExportState {
 
 			// A canceled run never finishes: completed blobs stay in `results` for
 			// per-clip download, but nothing is downloaded or zipped automatically.
-			if (!this.#cancelRequested) {
+			if (!this.#cancelRequested && gen === this.#generation) {
 				if (mode.finish === 'download-first' && succeeded[0]) {
 					this.#deps.downloadBlob(succeeded[0].blob, succeeded[0].name);
 				} else if (mode.finish === 'zip' && succeeded.length > 0) {
@@ -107,4 +114,25 @@ export class ExportState {
 		this.#cancelRequested = true;
 		await this.#current?.cancel();
 	}
+
+	/**
+	 * Stop any in-flight run and clear all per-clip state. Bumping the generation
+	 * makes a still-running loop discard its late writes, so a stale export can
+	 * never repopulate statuses or fire a stray download/zip after a new file loads.
+	 */
+	reset(): void {
+		void this.cancel();
+		this.#generation++;
+		this.statuses = {};
+		this.progress = {};
+		this.errors = {};
+		this.results = {};
+		this.runError = null;
+	}
 }
+
+export const exportState = new ExportState({
+	encodeClip: realEncodeClip,
+	downloadBlob,
+	makeZip
+});

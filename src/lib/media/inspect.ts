@@ -11,8 +11,9 @@ export class InspectionError extends Error {
 export type InspectResult = { duration: number; meta: VideoMeta };
 
 export async function inspectFile(file: File): Promise<InspectResult> {
+	let input: Input | null = null;
 	try {
-		const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+		input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
 		const duration = await input.computeDuration();
 		const videoTrack = await input.getPrimaryVideoTrack();
 		if (!videoTrack) throw new InspectionError('No video track was found in this file.');
@@ -40,6 +41,8 @@ export async function inspectFile(file: File): Promise<InspectResult> {
 		if (error instanceof InspectionError) throw error;
 		console.error('[inspect] failed to read media file', error);
 		throw new InspectionError('This file could not be read as a video.', { cause: error });
+	} finally {
+		input?.dispose();
 	}
 }
 
