@@ -171,3 +171,20 @@ test('video without audio exports a silent MP4', async ({ page }) => {
 	expect(meta.hasAudio).toBe(false);
 	expect(Math.abs(meta.duration - 2)).toBeLessThanOrEqual(0.35);
 });
+
+test('offline: the app shell loads from cache', async ({ page, context }) => {
+	test.skip(process.env.E2E_BUILD !== '1', 'the service worker ships in the production build only');
+
+	// First online visit registers the worker and lets it precache the shell.
+	await page.goto('/');
+	await page.evaluate(() => navigator.serviceWorker.ready);
+	await expect(page.getByTestId('file-input')).toBeVisible();
+
+	await context.setOffline(true);
+	try {
+		await page.reload();
+		await expect(page.getByTestId('file-input')).toBeVisible();
+	} finally {
+		await context.setOffline(false);
+	}
+});

@@ -28,8 +28,9 @@ one timeline, with per-clip export](docs/screenshot.png)
   normally.
 - **Remembers your work** — settings persist, and each file's clip layout comes
   back when you load it again (localStorage; nothing leaves the machine).
-- **Installable PWA** — add it to your home screen (offline mode is on the
-  [roadmap](#roadmap)).
+- **Installable PWA with offline support** — add it to your home screen; after
+  one online visit the app shell and assets are cached and it opens without a
+  network connection.
 
 ## Quick start
 
@@ -136,6 +137,14 @@ HTTPS_DEV=1 ./node_modules/.bin/vite dev --port 5180 --strictPort --host
 # then open https://<your-lan-ip>:5180/ on the phone and accept the cert warning
 ```
 
+### Offline
+
+A service worker ships in the production build only (never in dev). After one
+online visit it caches the app shell and build assets, so the app opens and runs
+without a network connection. Updates are picked up on the next online load
+after a deploy. Compatibility mode's ffmpeg core (~31MB) downloads on first
+online use and is then cached too.
+
 ## Browser support
 
 - **Chrome on macOS** is the supported target.
@@ -186,8 +195,6 @@ src/
 
 ## Roadmap
 
-- Service worker for true offline mode (the installable PWA currently needs the
-  network to load).
 - Mobile-first layout and touch interactions for the editor.
 
 ## License
