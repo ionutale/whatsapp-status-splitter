@@ -30,6 +30,18 @@ export function autoSplit(duration: number, maxClipDuration: number): Segment[] 
 		out.push({ id: newSegmentId(), start: roundMs(cursor), end: roundMs(end) });
 		cursor = end;
 	}
+	// Rebalance a sub-minimum tail: split the last two chunks evenly instead of
+	// leaving a sliver the minimum-length clamp can never repair.
+	if (out.length > 1) {
+		const last = out[out.length - 1];
+		if (last.end - last.start < MIN_CLIP_DURATION - EPS) {
+			out.pop();
+			const prev = out[out.length - 1];
+			const mid = roundMs(prev.start + (duration - prev.start) / 2);
+			prev.end = mid;
+			out.push({ id: newSegmentId(), start: mid, end: roundMs(duration) });
+		}
+	}
 	return out;
 }
 
@@ -39,7 +51,8 @@ export function clampSegment(
 	moved: 'start' | 'end' = 'end'
 ): Segment {
 	const duration = Math.max(0, opts.duration);
-	const min = Math.min(opts.minClipDuration ?? MIN_CLIP_DURATION, duration);
+	const requestedMin = opts.minClipDuration ?? MIN_CLIP_DURATION;
+	const min = Math.min(requestedMin, duration);
 	const max = Math.min(Math.max(opts.maxClipDuration, min), duration);
 
 	let start = clampNumber(segment.start, 0, duration);
@@ -58,6 +71,20 @@ export function clampSegment(
 	}
 	start = clampNumber(start, 0, duration);
 	end = clampNumber(end, start, duration);
+
+	// Boundary-minimum guarantee: if the pinned edge sits within `min` of a
+	// video boundary the clamps above can leave a sub-minimum clip. Place a
+	// minimum-length window at the boundary it is pinned against (when the
+	// video is long enough to hold one).
+	if (end - start < min - EPS && duration >= requestedMin - EPS) {
+		if (end >= duration - EPS) {
+			start = roundMs(duration - min);
+			end = roundMs(duration);
+		} else {
+			start = 0;
+			end = roundMs(Math.min(min, duration));
+		}
+	}
 
 	return { ...segment, start: roundMs(start), end: roundMs(end) };
 }

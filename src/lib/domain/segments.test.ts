@@ -122,6 +122,37 @@ describe('computeCoverage', () => {
 	});
 });
 
+describe('minimum clip guarantee', () => {
+	it('rebalances a sub-minimum auto-split tail', () => {
+		const chunks = autoSplit(60.01, 30);
+		expect(times(chunks)).toEqual([
+			[0, 30],
+			[30, 45.005],
+			[45.005, 60.01]
+		]);
+		for (const chunk of chunks) {
+			expect(chunk.end - chunk.start).toBeGreaterThanOrEqual(MIN_CLIP_DURATION);
+		}
+	});
+	it('rebalances a sub-minimum tail at a larger duration', () => {
+		expect(times(autoSplit(60.3, 30))).toEqual([
+			[0, 30],
+			[30, 45.15],
+			[45.15, 60.3]
+		]);
+	});
+	it('lifts a boundary-pinned clampSegment to the minimum', () => {
+		const out = clampSegment(seg(60, 60.01), { duration: 60.01, maxClipDuration: 30 }, 'end');
+		expect(times([out])).toEqual([[59.51, 60.01]]);
+		expect(out.end - out.start).toBeCloseTo(MIN_CLIP_DURATION, 3);
+	});
+	it('lifts a boundary-pinned nudge to the minimum', () => {
+		const out = nudge(seg(60, 60.01), 'end', 1, { duration: 60.01, maxClipDuration: 30 });
+		expect(times([out])).toEqual([[59.51, 60.01]]);
+		expect(out.end - out.start).toBeCloseTo(MIN_CLIP_DURATION, 3);
+	});
+});
+
 describe('constants', () => {
 	it('minimum is 0.5s', () => {
 		expect(MIN_CLIP_DURATION).toBe(0.5);
