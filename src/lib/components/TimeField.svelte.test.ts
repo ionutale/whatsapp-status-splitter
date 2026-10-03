@@ -28,6 +28,6 @@ describe('TimeField', () => {
 		input.dispatchEvent(new Event('input', { bubbles: true }));
 		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 		expect(onCommit).not.toHaveBeenCalled();
-		expect(input.className).toContain('input-error');
+		await expect.poll(() => input.className).toContain('input-error');
 	});
 });

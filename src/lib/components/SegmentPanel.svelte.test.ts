@@ -46,4 +46,32 @@ describe('SegmentPanel', () => {
 		expect(project.segments.length).toBe(3);
 		expect(project.dirty).toBe(false);
 	});
+
+	it('does not re-commit a rounded display on blur without edits', async () => {
+		// A raw drag candidate before clamping can carry sub-millisecond precision;
+		// seed it directly so the display (12.4) differs from the stored value.
+		project.segments = project.segments.map((segment) =>
+			segment.id === project.selectedId ? { ...segment, end: 12.4371 } : segment
+		);
+		const screen = await render(SegmentPanel);
+		const end = screen.container.querySelector(
+			'[data-testid="time-field-end"]'
+		) as HTMLInputElement;
+		expect(end.value).toBe('00:12.4');
+		end.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		expect(project.selected!.end).toBe(12.4371);
+	});
+
+	it('ignores a cleared or non-numeric max length', async () => {
+		const screen = await render(SegmentPanel);
+		const max = screen.container.querySelector(
+			'[data-testid="input-max-length"]'
+		) as HTMLInputElement;
+		max.value = '';
+		max.dispatchEvent(new Event('change', { bubbles: true }));
+		expect(project.maxClipDuration).toBe(30);
+		max.value = '15';
+		max.dispatchEvent(new Event('change', { bubbles: true }));
+		expect(project.maxClipDuration).toBe(15);
+	});
 });

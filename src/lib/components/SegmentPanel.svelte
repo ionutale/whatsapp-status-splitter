@@ -25,8 +25,11 @@
 			step="1"
 			value={project.maxClipDuration}
 			data-testid="input-max-length"
-			onchange={(event) =>
-				project.setMaxClipDuration(Number((event.currentTarget as HTMLInputElement).value))}
+			onchange={(event) => {
+				const raw = (event.currentTarget as HTMLInputElement).value;
+				if (!raw.trim() || !Number.isFinite(Number(raw))) return;
+				project.setMaxClipDuration(Number(raw));
+			}}
 		/>
 		s
 	</label>

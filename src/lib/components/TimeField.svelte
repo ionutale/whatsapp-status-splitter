@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { flushSync } from 'svelte';
 	import { formatClock, parseClock } from '../domain/format';
 
 	let {
@@ -23,12 +22,14 @@
 	});
 
 	function commit() {
+		if (text === formatClock(seconds)) return;
 		const value = parseClock(text);
-		invalid = value === null;
-		// Svelte 5 applies DOM updates asynchronously; flush so the error style is
-		// observable immediately after a commit (and before onCommit).
-		flushSync();
-		if (value !== null) onCommit(value);
+		if (value === null) {
+			invalid = true;
+			return;
+		}
+		invalid = false;
+		onCommit(value);
 	}
 </script>
 
