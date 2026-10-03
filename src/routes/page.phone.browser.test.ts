@@ -67,6 +67,7 @@ describe('phone editor column', () => {
 	});
 
 	afterEach(async () => {
+		vi.restoreAllMocks();
 		await page.viewport(1280, 720);
 	});
 
@@ -102,8 +103,17 @@ describe('phone editor column', () => {
 		expect(chips[1].getAttribute('aria-pressed')).toBe('true');
 	});
 
-	it('crosses the breakpoint to the desktop editor without losing segments', async () => {
+	it('crosses the breakpoint to the desktop editor with the phone selection intact', async () => {
 		const screen = await renderPhone();
+		const chips = screen.container.querySelectorAll('[data-testid="clip-chip"]');
+
+		// Real phone-side mutation: select the second clip. Without this the
+		// "state survives" assertion would hold trivially.
+		(chips[1] as HTMLElement).click();
+		await vi.waitFor(() => {
+			expect(project.selectedId).toBe(project.sortedSegments[1].id);
+		});
+		const selectedBefore = project.selectedId;
 		const before = project.segments.map((segment) => ({ start: segment.start, end: segment.end }));
 
 		await page.viewport(1280, 720);
@@ -112,6 +122,16 @@ describe('phone editor column', () => {
 			.poll(() => screen.container.querySelector('[data-testid="phone-editor"]'))
 			.toBeNull();
 		expect(screen.container.querySelector('[data-testid="segment-bar"]')).not.toBeNull();
+
+		// The selection crossed the breakpoint: the desktop clip controls show clip 2.
+		expect(project.selectedId).toBe(selectedBefore);
+		await vi.waitFor(() => {
+			const startField = screen.container.querySelector(
+				'[data-testid="time-field-start"]'
+			) as HTMLInputElement | null;
+			expect(startField?.value).toBe('00:30.0');
+		});
+
 		const after = project.segments.map((segment) => ({ start: segment.start, end: segment.end }));
 		expect(after).toEqual(before);
 	});
@@ -122,6 +142,10 @@ describe('phone editor column', () => {
 		await vi.waitFor(() => {
 			expect(Number(bar.dataset.pps)).toBeGreaterThan(0);
 		});
+		// At rest the clip is [0, 30]. The assertions below only have teeth if the
+		// drag actually moves the end all the way down to the 0.5s clamp floor.
+		expect(Number(bar.dataset.start)).toBe(0);
+		expect(Number(bar.dataset.end)).toBe(30);
 
 		const handle = screen.container.querySelector('[data-testid="trim-handle-end"]') as HTMLElement;
 		handle.dispatchEvent(
@@ -134,12 +158,15 @@ describe('phone editor column', () => {
 			new PointerEvent('pointerup', { clientX: -1000, bubbles: true, pointerId: 1 })
 		);
 
+		// The delta (-1300/pps) is far past the clip, so `project.updateSegment`'s
+		// min-length clamp must pin the end at exactly 0.5s.
 		await vi.waitFor(() => {
-			const start = Number(bar.dataset.start);
-			const end = Number(bar.dataset.end);
-			expect(end).toBeGreaterThanOrEqual(start + 0.5 - 1e-3);
+			expect(Number(bar.dataset.end)).toBeCloseTo(0.5, 2);
 		});
-		expect(Number(bar.dataset.end)).toBeGreaterThan(Number(bar.dataset.start));
+		const start = Number(bar.dataset.start);
+		const end = Number(bar.dataset.end);
+		expect(end).toBeLessThan(5);
+		expect(end).toBeGreaterThanOrEqual(start + 0.5 - 1e-3);
 	});
 
 	it('taps the phone preview to toggle playback', async () => {
