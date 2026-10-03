@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import '../../routes/layout.css';
 import Timeline from './Timeline.svelte';
 
 const segments = [
@@ -44,5 +45,95 @@ describe('Timeline', () => {
 		);
 		expect(onSeek).toHaveBeenCalled();
 		expect(onSeek.mock.calls[0][0]).toBeCloseTo(40, 0);
+	});
+
+	it('renders overlapping coverage that shares a start without duplicate-key errors', async () => {
+		const overlapping = [
+			{ id: 'a', start: 0, end: 30 },
+			{ id: 'b', start: 10, end: 20 },
+			{ id: 'c', start: 10, end: 25 }
+		];
+		const screen = await render(Timeline, {
+			duration: 80,
+			segments: overlapping,
+			selectedId: null,
+			currentTime: 0,
+			thumbs: [],
+			coverage: {
+				gaps: [],
+				overlaps: [
+					{ start: 10, end: 20 },
+					{ start: 10, end: 25 }
+				]
+			},
+			onSeek: () => {},
+			onSelect: () => {},
+			onSegmentChange: () => {}
+		});
+		expect(screen.container.querySelectorAll('[data-testid="overlap-band"]')).toHaveLength(2);
+	});
+
+	it('places the lane area below the ruler and filmstrip', async () => {
+		const screen = await render(Timeline, {
+			duration: 80,
+			segments,
+			selectedId: null,
+			currentTime: 0,
+			thumbs: [],
+			coverage: { gaps: [], overlaps: [] },
+			onSeek: () => {},
+			onSelect: () => {},
+			onSegmentChange: () => {}
+		});
+		const timeline = screen.container.querySelector('[data-testid="timeline"]') as HTMLElement;
+		const bar = screen.container.querySelector('[data-testid="segment-bar"]') as HTMLElement;
+		const offset = bar.getBoundingClientRect().top - timeline.getBoundingClientRect().top;
+		expect(offset).toBeGreaterThanOrEqual(60);
+	});
+
+	it('selects a clip without seeking when its body is clicked', async () => {
+		const onSeek = vi.fn();
+		const onSelect = vi.fn();
+		const screen = await render(Timeline, {
+			duration: 80,
+			segments,
+			selectedId: null,
+			currentTime: 0,
+			thumbs: [],
+			coverage: { gaps: [], overlaps: [] },
+			onSeek,
+			onSelect,
+			onSegmentChange: () => {}
+		});
+		const bar = screen.container.querySelector('[data-testid="segment-bar"]') as HTMLElement;
+		bar.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		bar.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		expect(onSelect).toHaveBeenCalledWith('a');
+		expect(onSeek).not.toHaveBeenCalled();
+	});
+
+	it('seeks when an empty region of the track is clicked', async () => {
+		const onSeek = vi.fn();
+		const screen = await render(Timeline, {
+			duration: 80,
+			segments,
+			selectedId: null,
+			currentTime: 0,
+			thumbs: [],
+			coverage: { gaps: [], overlaps: [] },
+			onSeek,
+			onSelect: () => {},
+			onSegmentChange: () => {}
+		});
+		const timeline = screen.container.querySelector('[data-testid="timeline"]') as HTMLElement;
+		const rect = timeline.getBoundingClientRect();
+		timeline.dispatchEvent(
+			new MouseEvent('click', {
+				clientX: rect.left + rect.width / 2,
+				clientY: rect.bottom - 2,
+				bubbles: true
+			})
+		);
+		expect(onSeek).toHaveBeenCalled();
 	});
 });

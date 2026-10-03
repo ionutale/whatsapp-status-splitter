@@ -57,9 +57,13 @@
 		if (!file || !meta) return;
 		let cancelled = false;
 		extractThumbnails(file, 30, 160, (thumb) => {
-			if (!cancelled) project.addThumb(thumb);
+			if (cancelled || project.file !== file) {
+				URL.revokeObjectURL(thumb.url);
+			} else {
+				project.addThumb(thumb);
+			}
 		}).catch((error) => {
-			console.error('[thumbs] extraction failed', error);
+			if (!cancelled) console.error('[thumbs] extraction failed', error);
 		});
 		return () => {
 			cancelled = true;

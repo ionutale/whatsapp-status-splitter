@@ -84,31 +84,34 @@
 					style="left:{gap.start * pxPerSecond}px; width:{Math.max(
 						2,
 						(gap.end - gap.start) * pxPerSecond
-					)}px; top:20px; height:{laneCount * 44}px"
+					)}px; top:64px; height:{laneCount * 44}px"
 					title="Uncovered"
 				></div>
 			{/each}
-			{#each coverage.overlaps as overlap (overlap.start)}
+			{#each coverage.overlaps as overlap, index (index)}
 				<div
 					class="absolute bg-error/30"
 					style="left:{overlap.start * pxPerSecond}px; width:{Math.max(
 						2,
 						(overlap.end - overlap.start) * pxPerSecond
-					)}px; top:20px; height:{laneCount * 44}px"
+					)}px; top:64px; height:{laneCount * 44}px"
 					title="Overlapping clips"
+					data-testid="overlap-band"
 				></div>
 			{/each}
-			{#each segments as segment, index (segment.id)}
-				<SegmentBar
-					{segment}
-					lane={lanes[index]}
-					{pxPerSecond}
-					selected={segment.id === selectedId}
-					{index}
-					onSelect={(id) => onSelect(id)}
-					onChange={(id, next, moved) => onSegmentChange(id, next, moved)}
-				/>
-			{/each}
+			<div class="absolute top-16 left-0 w-full">
+				{#each segments as segment, index (segment.id)}
+					<SegmentBar
+						{segment}
+						lane={lanes[index]}
+						{pxPerSecond}
+						selected={segment.id === selectedId}
+						{index}
+						onSelect={(id) => onSelect(id)}
+						onChange={(id, next, moved) => onSegmentChange(id, next, moved)}
+					/>
+				{/each}
+			</div>
 			<div
 				class="absolute top-0 h-full w-0.5 bg-error"
 				style="left:{currentTime * pxPerSecond}px"

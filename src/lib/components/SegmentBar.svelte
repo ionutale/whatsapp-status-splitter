@@ -67,7 +67,7 @@
 	const duration = $derived(segment.end - segment.start);
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 <div
 	class="segment-bar absolute flex h-9 items-center rounded-selector border border-base-content/20"
 	class:selected
@@ -77,6 +77,7 @@
 	data-end={segment.end.toFixed(3)}
 	data-duration={duration.toFixed(3)}
 	onpointerdown={() => onSelect?.(segment.id)}
+	onclick={(event) => event.stopPropagation()}
 >
 	<span
 		class="handle absolute top-0 left-0 h-full w-3 cursor-ew-resize rounded-l bg-primary"
