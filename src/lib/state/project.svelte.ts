@@ -21,6 +21,7 @@ export class ProjectState {
 	dirty = $state(false);
 	maxClipDuration = $state(30);
 	preset = $state<QualityPreset>('whatsapp');
+	crop916 = $state(false);
 	zoom = $state(1);
 	loopPreview = $state(true);
 	error = $state<string | null>(null);

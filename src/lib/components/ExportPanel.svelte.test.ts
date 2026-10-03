@@ -68,6 +68,7 @@ describe('ExportPanel', () => {
 		project.begin(new File([], 'vid.mp4'));
 		project.ready(80, meta());
 		project.preset = 'whatsapp';
+		project.crop916 = false;
 	});
 
 	afterEach(() => {
@@ -97,6 +98,23 @@ describe('ExportPanel', () => {
 		select.value = 'small';
 		select.dispatchEvent(new Event('change', { bubbles: true }));
 		expect(project.preset).toBe('small');
+	});
+
+	it('toggles the 9:16 center-crop option', async () => {
+		const screen = await render(ExportPanel, { exporter: makeExporter([]) });
+		const toggle = screen.container.querySelector(
+			'[data-testid="toggle-crop916"]'
+		) as HTMLInputElement;
+		expect(toggle.checked).toBe(false);
+		expect(project.crop916).toBe(false);
+
+		toggle.click();
+		await expect.poll(() => project.crop916).toBe(true);
+		expect(toggle.checked).toBe(true);
+
+		toggle.click();
+		await expect.poll(() => project.crop916).toBe(false);
+		expect(toggle.checked).toBe(false);
 	});
 
 	it('re-encodes for share when the preset changed since the last export', async () => {

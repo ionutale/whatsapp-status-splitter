@@ -66,4 +66,20 @@ describe('buildOutputPlan', () => {
 		const plan = buildOutputPlan(30, meta({ audioDecodable: false }), 'whatsapp');
 		expect(plan.audioKbps).toBe(0);
 	});
+	it('defaults to contain and the original dimensions', () => {
+		const plan = buildOutputPlan(10, meta(), 'whatsapp');
+		expect(plan).toMatchObject({ width: 1280, height: 720, fit: 'contain' });
+	});
+	it('crops whatsapp to 720x1280 cover', () => {
+		const plan = buildOutputPlan(10, meta(), 'whatsapp', { crop916: true });
+		expect(plan).toMatchObject({ width: 720, height: 1280, fit: 'cover' });
+	});
+	it('crops high to 1080x1920 cover', () => {
+		const plan = buildOutputPlan(10, meta(), 'high', { crop916: true });
+		expect(plan).toMatchObject({ width: 1080, height: 1920, fit: 'cover' });
+	});
+	it('crops small to 480x854 cover', () => {
+		const plan = buildOutputPlan(10, meta(), 'small', { crop916: true });
+		expect(plan).toMatchObject({ width: 480, height: 854, fit: 'cover' });
+	});
 });

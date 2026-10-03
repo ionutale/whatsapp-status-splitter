@@ -69,7 +69,7 @@ export const realEncodeClip: EncodeClipFactory = ({ file, segment, plan, onProgr
 					quality: new Quality({ bitrate: plan.videoKbps * 1000 }),
 					width: plan.width,
 					height: plan.height,
-					fit: 'contain',
+					fit: plan.fit,
 					frameRate: plan.frameRate,
 					// Bake rotation/flip into pixels so clips display upright everywhere.
 					allowTransformationMetadata: false

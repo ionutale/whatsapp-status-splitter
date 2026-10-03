@@ -16,7 +16,9 @@
 					id: segment.id,
 					fileName: clipFileName(base, index),
 					segment,
-					plan: buildOutputPlan(segment.end - segment.start, project.meta!, project.preset)
+					plan: buildOutputPlan(segment.end - segment.start, project.meta!, project.preset, {
+						crop916: project.crop916
+					})
 				}))
 			: []
 	);
@@ -30,7 +32,7 @@
 	type CacheEntry = { key: string; blob: Blob };
 	const cache = new SvelteMap<string, CacheEntry>();
 	const jobKey = (job: (typeof jobs)[number]) =>
-		`${job.plan.width}x${job.plan.height}/${job.plan.videoKbps}/${job.segment.start}-${job.segment.end}`;
+		`${job.plan.width}x${job.plan.height}/${job.plan.fit}/${job.plan.videoKbps}/${job.segment.start}-${job.segment.end}`;
 
 	async function exportClip(job: (typeof jobs)[number]) {
 		if (!project.file) return;
@@ -76,6 +78,19 @@
 			<option value="small">Small file</option>
 		</select>
 	</div>
+
+	<label class="label cursor-pointer justify-start gap-2 py-0">
+		<input
+			type="checkbox"
+			class="checkbox checkbox-sm"
+			data-testid="toggle-crop916"
+			bind:checked={project.crop916}
+		/>
+		<span class="label-text">
+			Fit 9:16 (crop)
+			<span class="block text-xs text-base-content/60">center-crops for full-screen statuses</span>
+		</span>
+	</label>
 
 	<ul class="flex flex-col gap-2">
 		{#each jobs as job (job.id)}

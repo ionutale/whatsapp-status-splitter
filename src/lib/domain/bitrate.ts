@@ -15,6 +15,7 @@ export type VideoMeta = {
 export type OutputPlan = {
 	width: number;
 	height: number;
+	fit?: 'contain' | 'cover';
 	frameRate: number;
 	videoKbps: number;
 	audioKbps: number;
@@ -61,6 +62,8 @@ export const PRESET_LIMITS: Record<
 const clampNumber = (value: number, min: number, max: number) =>
 	Math.min(Math.max(value, min), max);
 
+const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+
 export function estimateBitrate(
 	durationSec: number,
 	preset: QualityPreset,
@@ -87,21 +90,22 @@ export function computeOutputSize(
 ): { width: number; height: number } {
 	const shortSide = Math.min(width, height);
 	const scale = shortSide > resolutionCap ? resolutionCap / shortSide : 1;
-	const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
 	return { width: even(width * scale), height: even(height * scale) };
 }
 
 export function buildOutputPlan(
 	durationSec: number,
 	meta: VideoMeta,
-	preset: QualityPreset
+	preset: QualityPreset,
+	options: { crop916?: boolean } = {}
 ): OutputPlan {
 	const limits = PRESET_LIMITS[preset];
-	const { width, height } = computeOutputSize(
-		meta.displayWidth,
-		meta.displayHeight,
-		limits.resolutionCap
-	);
+	const crop916 = options.crop916 ?? false;
+	// 9:16 targets the preset's resolution cap on the shorter (width) side. The
+	// bitrate/size math below is unchanged: it keys off the cap, not the dims.
+	const { width, height } = crop916
+		? { width: even(limits.resolutionCap), height: even((limits.resolutionCap * 16) / 9) }
+		: computeOutputSize(meta.displayWidth, meta.displayHeight, limits.resolutionCap);
 	const { videoKbps, audioKbps, estimatedBytes } = estimateBitrate(
 		durationSec,
 		preset,
@@ -111,6 +115,7 @@ export function buildOutputPlan(
 	return {
 		width,
 		height,
+		fit: crop916 ? 'cover' : 'contain',
 		frameRate: Math.max(1, Math.min(limits.fpsCap, Math.round(sourceFps))),
 		videoKbps,
 		audioKbps,
