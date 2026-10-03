@@ -7,6 +7,8 @@ Everything runs in your browser: video is decoded and re-encoded on-device with
 [Mediabunny](https://mediabunny.dev/). Nothing is uploaded, and there is no
 server, database, or account.
 
+**Try it live:** <https://whatsapp-status-splitter.vercel.app>
+
 ![WhatsApp Status Splitter: an 80-second video split into 30s/30s/20s clips on
 one timeline, with per-clip export](docs/screenshot.png)
 
