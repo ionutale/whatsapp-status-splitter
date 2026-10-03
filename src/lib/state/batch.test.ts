@@ -268,6 +268,24 @@ describe('BatchState', () => {
 		expect(h.downloads).toEqual([BATCH_ZIP_NAME]);
 	});
 
+	it('does not suffix Object.prototype names like constructor or toString', async () => {
+		const h = harness({
+			results: [[seg('a1', 0, 2)], [seg('b1', 0, 2)]]
+		});
+		// A plain {} inherits these from Object.prototype, so a first occurrence
+		// must not be treated as a duplicate.
+		h.state.setFiles([file('constructor.mp4'), file('toString.mp4')]);
+		await h.state.start();
+
+		expect(h.zipCalls).toHaveLength(1);
+		expect(h.zipCalls[0].map((entry) => entry.name)).toEqual([
+			'constructor/constructor_part01.mp4',
+			'toString/toString_part01.mp4'
+		]);
+		expect(h.state.items.map((i) => i.status)).toEqual(['done', 'done']);
+		expect(h.downloads).toEqual([BATCH_ZIP_NAME]);
+	});
+
 	it('cancels the in-flight clip when a new selection replaces the queue', async () => {
 		const pending = deferred<Blob>();
 		let cancelCalls = 0;

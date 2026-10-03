@@ -120,7 +120,10 @@ export class BatchState {
 		const items = this.items;
 		const fileCount = items.length;
 		const entries: { name: string; blob: Blob }[] = [];
-		const usedBases: Record<string, true> = {};
+		// Object.create(null): a plain {} inherits from Object.prototype, so a
+		// first-occurrence base like "constructor" or "toString" would read as
+		// already-used and get wrongly suffixed.
+		const usedBases = Object.create(null) as Record<string, true>;
 
 		for (const item of items) {
 			item.status = 'queued';

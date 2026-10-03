@@ -1,9 +1,10 @@
 # WhatsApp Status Splitter
 
 Splits one video — or a batch of videos — into independent, trimmable clips of
-≤30s and exports WhatsApp-Status-ready MP4s — entirely in the browser. Video is decoded and
-re-encoded on-device with [WebCodecs](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API)
-and [Mediabunny](https://mediabunny.dev/); nothing is uploaded and there is no
+≤30s and exports WhatsApp-Status-ready MP4s — entirely in the browser. Video is
+decoded and re-encoded on-device with
+[WebCodecs](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API) and
+[Mediabunny](https://mediabunny.dev/); nothing is uploaded and there is no
 server, database, or account.
 
 ## Prerequisites
