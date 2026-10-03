@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VideoMeta } from '../domain/bitrate';
 import { ProjectState } from './project.svelte';
-import { fileKey, saveSession, setStorageForTests, SESSION_STORAGE_KEY } from './persist';
+import { fileKey, saveSession, setStorageForTests, SESSIONS_STORAGE_KEY } from './persist';
 
 const meta = (overrides: Partial<VideoMeta> = {}): VideoMeta => ({
 	displayWidth: 1920,
@@ -182,10 +182,15 @@ describe('ProjectState persistence', () => {
 	});
 
 	it('auto-splits a different file even when a session is stored', () => {
+		// Give fileA a distinctive layout first. Without this the stored layout is
+		// identical to what autoSplit would compute for fileB, so the test would
+		// stay green even if the per-file key guard were removed.
 		const fileA = new File([], 'a.mp4');
 		const first = new ProjectState();
 		first.begin(fileA);
 		first.ready(80, meta());
+		first.select(first.segments[0].id);
+		first.splitSelected();
 		flushDebounce();
 
 		const fileB = new File([], 'b.mp4');
@@ -199,13 +204,42 @@ describe('ProjectState persistence', () => {
 		]);
 	});
 
+	it("restores fileA's edited layout after loading fileB in between", () => {
+		const fileA = new File([], 'a.mp4');
+		const fileB = new File([], 'b.mp4');
+
+		const first = new ProjectState();
+		first.begin(fileA);
+		first.ready(80, meta());
+		first.select(first.segments[0].id);
+		first.splitSelected();
+		flushDebounce();
+
+		const middle = new ProjectState();
+		middle.begin(fileB);
+		middle.ready(80, meta());
+		expect(middle.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 30],
+			[30, 60],
+			[60, 80]
+		]);
+		flushDebounce();
+
+		const back = new ProjectState();
+		back.begin(fileA);
+		back.ready(80, meta());
+		expect(back.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 15],
+			[15, 30],
+			[30, 60],
+			[60, 80]
+		]);
+		expect(back.dirty).toBe(false);
+	});
+
 	it('falls back to auto-split when stored segments are out of range', () => {
 		const file = new File([], 'video.mp4');
-		saveSession({
-			version: 1,
-			fileKey: fileKey(file),
-			segments: [{ id: 'stale', start: 0, end: 999 }]
-		});
+		saveSession(fileKey(file), [{ start: 0, end: 999 }]);
 
 		const state = new ProjectState();
 		state.begin(file);
@@ -219,14 +253,10 @@ describe('ProjectState persistence', () => {
 
 	it('falls back to auto-split when a stored segment exceeds the max length', () => {
 		const file = new File([], 'video.mp4');
-		saveSession({
-			version: 1,
-			fileKey: fileKey(file),
-			segments: [
-				{ id: 'a', start: 0, end: 45 },
-				{ id: 'b', start: 45, end: 80 }
-			]
-		});
+		saveSession(fileKey(file), [
+			{ start: 0, end: 45 },
+			{ start: 45, end: 80 }
+		]);
 
 		const state = new ProjectState();
 		state.begin(file);
@@ -239,13 +269,34 @@ describe('ProjectState persistence', () => {
 	});
 
 	it('loads normally when the stored session is corrupt', () => {
-		storage.setItem(SESSION_STORAGE_KEY, '{broken json');
+		storage.setItem(SESSIONS_STORAGE_KEY, '{broken json');
 		const file = new File([], 'video.mp4');
 		const state = new ProjectState();
 		state.begin(file);
 		state.ready(80, meta());
 		expect(state.segments.map((s) => [s.start, s.end])).toEqual([
 			[0, 30],
+			[30, 60],
+			[60, 80]
+		]);
+	});
+
+	it('flushes debounced edits synchronously via flushPendingWrites', () => {
+		const file = new File([], 'video.mp4');
+		const state = new ProjectState();
+		state.begin(file);
+		state.ready(80, meta());
+		state.select(state.segments[0].id);
+		state.splitSelected();
+		// No timer advance: the pagehide/visibility flush must write right now.
+		state.flushPendingWrites();
+
+		const reloaded = new ProjectState();
+		reloaded.begin(file);
+		reloaded.ready(80, meta());
+		expect(reloaded.segments.map((s) => [s.start, s.end])).toEqual([
+			[0, 15],
+			[15, 30],
 			[30, 60],
 			[60, 80]
 		]);

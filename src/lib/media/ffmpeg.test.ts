@@ -25,7 +25,7 @@ function loaderFor(fake: ReturnType<typeof makeFakeFfmpeg>) {
 
 const EXPECTED_ARGS = [
 	'-i',
-	'input.avi',
+	'in-old-video.avi',
 	'-c:v',
 	'libx264',
 	'-preset',
@@ -40,7 +40,7 @@ const EXPECTED_ARGS = [
 	'128k',
 	'-movflags',
 	'+faststart',
-	'old-video.mp4'
+	'out-old-video.mp4'
 ];
 
 describe('convertToCompatibleMp4', () => {
@@ -52,14 +52,14 @@ describe('convertToCompatibleMp4', () => {
 
 		const result = await convertToCompatibleMp4(file, {}, loaderFor(fake));
 
-		expect(fake.writeFile).toHaveBeenCalledWith('input.avi', expect.any(Uint8Array));
+		expect(fake.writeFile).toHaveBeenCalledWith('in-old-video.avi', expect.any(Uint8Array));
 		expect(fake.exec).toHaveBeenCalledWith(EXPECTED_ARGS);
-		expect(fake.readFile).toHaveBeenCalledWith('old-video.mp4');
+		expect(fake.readFile).toHaveBeenCalledWith('out-old-video.mp4');
 		expect(result.name).toBe('old-video.mp4');
 		expect(result.type).toBe('video/mp4');
 		expect(Array.from(new Uint8Array(await result.arrayBuffer()))).toEqual([1, 2, 3, 4]);
-		expect(fake.deleteFile).toHaveBeenCalledWith('input.avi');
-		expect(fake.deleteFile).toHaveBeenCalledWith('old-video.mp4');
+		expect(fake.deleteFile).toHaveBeenCalledWith('in-old-video.avi');
+		expect(fake.deleteFile).toHaveBeenCalledWith('out-old-video.mp4');
 		expect(fake.terminate).toHaveBeenCalled();
 	});
 
@@ -69,9 +69,23 @@ describe('convertToCompatibleMp4', () => {
 
 		const result = await convertToCompatibleMp4(file, {}, loaderFor(fake));
 
-		expect(fake.writeFile).toHaveBeenCalledWith('input', expect.any(Uint8Array));
-		expect(fake.exec).toHaveBeenCalledWith(expect.arrayContaining(['input', 'clip.mp4']));
+		expect(fake.writeFile).toHaveBeenCalledWith('in-clip', expect.any(Uint8Array));
+		expect(fake.exec).toHaveBeenCalledWith(expect.arrayContaining(['in-clip', 'out-clip.mp4']));
 		expect(result.name).toBe('clip.mp4');
+	});
+
+	it('keeps input and output FS names distinct when the source is input.mp4', async () => {
+		const fake = makeFakeFfmpeg();
+		const file = new File([new Uint8Array([1])], 'input.mp4', { type: 'video/mp4' });
+
+		const result = await convertToCompatibleMp4(file, {}, loaderFor(fake));
+
+		expect(fake.writeFile).toHaveBeenCalledWith('in-input.mp4', expect.any(Uint8Array));
+		expect(fake.exec).toHaveBeenCalledWith(
+			expect.arrayContaining(['in-input.mp4', 'out-input.mp4'])
+		);
+		expect(fake.readFile).toHaveBeenCalledWith('out-input.mp4');
+		expect(result.name).toBe('input.mp4');
 	});
 
 	it('forwards clamped progress events', async () => {
@@ -106,6 +120,32 @@ describe('convertToCompatibleMp4', () => {
 		expect(fake.terminate).toHaveBeenCalled();
 	});
 
+	it('aborts while the core loader is still pending, then terminates the late instance', async () => {
+		const fake = makeFakeFfmpeg();
+		let resolveLoader: (instance: FFmpeg) => void = () => {};
+		const pending = new Promise<FFmpeg>((resolve) => {
+			resolveLoader = resolve;
+		});
+		const loader = vi.fn(() => pending);
+		const controller = new AbortController();
+		const file = new File([new Uint8Array([1])], 'old-video.avi', { type: 'video/avi' });
+
+		const promise = convertToCompatibleMp4(file, { signal: controller.signal }, loader);
+		await vi.waitFor(() => expect(loader).toHaveBeenCalled());
+		controller.abort();
+
+		// Rejects without waiting for the ~31MB core download to finish.
+		await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+		expect(fake.terminate).not.toHaveBeenCalled();
+		expect(fake.writeFile).not.toHaveBeenCalled();
+
+		// The loader resolves after the abort: its instance must be terminated
+		// and never reused.
+		resolveLoader(fake as unknown as FFmpeg);
+		await vi.waitFor(() => expect(fake.terminate).toHaveBeenCalled());
+		expect(loader).toHaveBeenCalledTimes(1);
+	});
+
 	it('rejects immediately when the signal is already aborted', async () => {
 		const fake = makeFakeFfmpeg();
 		const controller = new AbortController();
@@ -128,8 +168,8 @@ describe('convertToCompatibleMp4', () => {
 		});
 
 		await expect(convertToCompatibleMp4(file, {}, loaderFor(fake))).rejects.toThrow(/exit code 1/);
-		expect(fake.deleteFile).toHaveBeenCalledWith('input.avi');
-		expect(fake.deleteFile).toHaveBeenCalledWith('old-video.mp4');
+		expect(fake.deleteFile).toHaveBeenCalledWith('in-old-video.avi');
+		expect(fake.deleteFile).toHaveBeenCalledWith('out-old-video.mp4');
 		expect(fake.terminate).toHaveBeenCalled();
 	});
 });

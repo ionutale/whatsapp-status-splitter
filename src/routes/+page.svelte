@@ -5,7 +5,7 @@
 	import Timeline from '../lib/components/Timeline.svelte';
 	import VideoPreview from '../lib/components/VideoPreview.svelte';
 	import { formatClock } from '../lib/domain/format';
-	import { assertDecodable, inspectFile } from '../lib/media/inspect';
+	import { assertDecodable, inspectFile, type InspectResult } from '../lib/media/inspect';
 	import { extractThumbnails } from '../lib/media/thumbnails';
 	import { exportState } from '../lib/state/export.svelte';
 	import { project } from '../lib/state/project.svelte';
@@ -44,6 +44,17 @@
 	async function handleFile(file: File) {
 		if (project.dirty && !confirm('Discard the current editing state and load a new video?'))
 			return;
+
+		// A newly loaded file invalidates any in-flight compatibility conversion:
+		// abort it and clear its state so a late result can never replace the new
+		// video.
+		compatController?.abort();
+		compatController = null;
+		compatFile = null;
+		converting = false;
+		compatProgress = 0;
+		compatError = null;
+
 		const token = ++loadToken;
 		loadError = null;
 		project.begin(file);
@@ -54,20 +65,16 @@
 		currentTime = 0;
 		seekRequest = null;
 		loading = true;
+
+		// Only the inspect/decode check may produce a compatibility offer. URL
+		// creation and project.ready() run outside this try so a programming error
+		// there surfaces as a plain load error, never as "compatibility mode".
+		let inspected: InspectResult | null = null;
 		try {
-			const { duration, meta } = await inspectFile(file);
-			if (token !== loadToken) return;
-			const blocked = assertDecodable(meta);
-			if (blocked) {
-				loadError = blocked;
-				return;
-			}
-			if (objectUrl) URL.revokeObjectURL(objectUrl);
-			objectUrl = URL.createObjectURL(file);
-			project.ready(duration, meta);
+			inspected = await inspectFile(file);
 		} catch (error) {
 			if (token !== loadToken) return;
-			console.error('[load] failed to load video', error);
+			console.error('[load] failed to read video', error);
 			loadError = error instanceof Error ? error.message : String(error);
 			// Duck-type the InspectionError name so this keeps working when the
 			// inspect module is mocked in tests without re-exporting the class.
@@ -77,28 +84,55 @@
 		} finally {
 			if (token === loadToken) loading = false;
 		}
+		if (!inspected || token !== loadToken) return;
+
+		const blocked = assertDecodable(inspected.meta);
+		if (blocked) {
+			// The container parsed but the codec can't be decoded (the real
+			// Windows-Chrome/HEVC case): offer the same on-device conversion
+			// instead of telling the user to convert the file by hand.
+			loadError = blocked;
+			compatFile = file;
+			return;
+		}
+
+		try {
+			if (objectUrl) URL.revokeObjectURL(objectUrl);
+			objectUrl = URL.createObjectURL(file);
+			project.ready(inspected.duration, inspected.meta);
+		} catch (error) {
+			if (token !== loadToken) return;
+			console.error('[load] failed to prepare video', error);
+			loadError = error instanceof Error ? error.message : String(error);
+		}
 	}
 
 	async function startCompat() {
 		if (!compatFile || converting) return;
+		const file = compatFile;
 		const controller = new AbortController();
 		compatController = controller;
 		converting = true;
 		compatProgress = 0;
 		compatError = null;
+		// Capture the current load generation: if a new file loads while this
+		// conversion runs, the result is stale and must be dropped.
+		const token = loadToken;
 		try {
 			const { convertToCompatibleMp4 } = await import('../lib/media/ffmpeg');
-			const converted = await convertToCompatibleMp4(compatFile, {
+			const converted = await convertToCompatibleMp4(file, {
 				onProgress: (ratio) => {
 					compatProgress = ratio;
 				},
 				signal: controller.signal
 			});
+			if (token !== loadToken) return;
 			compatFile = null;
 			converting = false;
 			compatController = null;
 			await handleFile(converted);
 		} catch (error) {
+			if (token !== loadToken) return;
 			converting = false;
 			compatController = null;
 			if (error instanceof DOMException && error.name === 'AbortError') {
@@ -113,6 +147,20 @@
 	function cancelCompat() {
 		compatController?.abort();
 	}
+
+	// Flush debounced persistence synchronously when the page is being hidden or
+	// unloaded, so closing a tab within the debounce window can't drop the last
+	// edit. (`ssr = false`, so `window`/`document` always exist here.)
+	function flushPendingWrites() {
+		project.flushPendingWrites();
+	}
+
+	function handleVisibilityChange() {
+		if (document.visibilityState === 'hidden') flushPendingWrites();
+	}
+
+	window.addEventListener('pagehide', flushPendingWrites);
+	document.addEventListener('visibilitychange', handleVisibilityChange);
 
 	function selectClip(id: string) {
 		project.select(id);
@@ -145,6 +193,8 @@
 	// $effect cleanup: that would run on every objectUrl change and revoke the
 	// URL still in use.
 	onDestroy(() => {
+		window.removeEventListener('pagehide', flushPendingWrites);
+		document.removeEventListener('visibilitychange', handleVisibilityChange);
 		if (objectUrl) URL.revokeObjectURL(objectUrl);
 	});
 </script>

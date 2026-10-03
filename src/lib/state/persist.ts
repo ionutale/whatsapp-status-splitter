@@ -1,5 +1,4 @@
 import type { QualityPreset } from '../domain/bitrate';
-import type { Segment } from '../domain/segments';
 
 /**
  * Local persistence for settings and per-file clip layouts. Plain TypeScript
@@ -10,7 +9,10 @@ import type { Segment } from '../domain/segments';
  */
 
 export const SETTINGS_STORAGE_KEY = 'wss.settings.v1';
-export const SESSION_STORAGE_KEY = 'wss.session.v1';
+export const SESSIONS_STORAGE_KEY = 'wss.sessions.v1';
+
+/** Newest layouts are kept; the oldest `savedAt` entries are pruned on write. */
+export const MAX_STORED_SESSIONS = 10;
 
 export type PersistedSettings = {
 	version: 1;
@@ -19,10 +21,17 @@ export type PersistedSettings = {
 	maxClipDuration: number;
 };
 
-export type PersistedSession = {
-	version: 1;
-	fileKey: string;
-	segments: Segment[];
+/** One file's stored clip layout: only the numbers that matter, plus a timestamp. */
+export type PersistedSegment = { start: number; end: number };
+
+export type PersistedLayout = {
+	segments: PersistedSegment[];
+	savedAt: number;
+};
+
+export type PersistedSessions = {
+	version: 2;
+	entries: Record<string, PersistedLayout>;
 };
 
 export type FileLike = { name: string; size: number; lastModified: number };
@@ -74,22 +83,62 @@ function validateSettings(value: unknown): PersistedSettings | null {
 	};
 }
 
-function validateSession(value: unknown): PersistedSession | null {
+function validateLayout(value: unknown): PersistedLayout | null {
 	if (typeof value !== 'object' || value === null) return null;
 	const candidate = value as Record<string, unknown>;
-	if (candidate.version !== 1) return null;
-	if (typeof candidate.fileKey !== 'string' || candidate.fileKey.length === 0) return null;
+	if (!isFiniteNumber(candidate.savedAt)) return null;
 	if (!Array.isArray(candidate.segments)) return null;
-	const segments: Segment[] = [];
+	const segments: PersistedSegment[] = [];
 	for (const item of candidate.segments) {
 		if (typeof item !== 'object' || item === null) return null;
 		const segment = item as Record<string, unknown>;
-		if (typeof segment.id !== 'string' || segment.id.length === 0) return null;
 		if (!isFiniteNumber(segment.start) || !isFiniteNumber(segment.end)) return null;
 		if (segment.start < 0 || segment.end <= segment.start) return null;
-		segments.push({ id: segment.id, start: segment.start, end: segment.end });
+		segments.push({ start: segment.start, end: segment.end });
 	}
-	return { version: 1, fileKey: candidate.fileKey, segments };
+	return { segments, savedAt: candidate.savedAt };
+}
+
+/**
+ * Parse the stored map, dropping individual entries that no longer validate so
+ * one bad layout can never hide the others. Returns null only when the whole
+ * value is unreadable (so callers can distinguish "nothing stored" from
+ * "something stored but corrupt").
+ */
+function parseSessions(value: unknown): PersistedSessions | null {
+	if (typeof value !== 'object' || value === null) return null;
+	const candidate = value as Record<string, unknown>;
+	if (candidate.version !== 2) return null;
+	if (typeof candidate.entries !== 'object' || candidate.entries === null) return null;
+	const entries: Record<string, PersistedLayout> = {};
+	for (const [key, raw] of Object.entries(candidate.entries)) {
+		if (key.length === 0) continue;
+		const layout = validateLayout(raw);
+		if (!layout) {
+			console.error('[persist] dropping session with an unexpected shape', key, raw);
+			continue;
+		}
+		entries[key] = layout;
+	}
+	return { version: 2, entries };
+}
+
+/** Read and validate the whole map; an unreadable value becomes an empty map. */
+function readSessions(storage: Storage): PersistedSessions {
+	try {
+		const raw = storage.getItem(SESSIONS_STORAGE_KEY);
+		if (raw == null) return { version: 2, entries: {} };
+		const parsed: unknown = JSON.parse(raw);
+		const sessions = parseSessions(parsed);
+		if (!sessions) {
+			console.error('[persist] stored sessions have an unexpected shape', parsed);
+			return { version: 2, entries: {} };
+		}
+		return sessions;
+	} catch (error) {
+		console.error('[persist] failed to read sessions', error);
+		return { version: 2, entries: {} };
+	}
 }
 
 export function loadSettings(): PersistedSettings | null {
@@ -121,30 +170,49 @@ export function saveSettings(settings: PersistedSettings): void {
 	}
 }
 
-export function loadSession(): PersistedSession | null {
+/** The stored layout for `key`, or null when absent/unreadable. */
+export function loadSession(key: string): PersistedLayout | null {
 	try {
 		const storage = resolveStorage();
 		if (!storage) return null;
-		const raw = storage.getItem(SESSION_STORAGE_KEY);
+		const raw = storage.getItem(SESSIONS_STORAGE_KEY);
 		if (raw == null) return null;
 		const parsed: unknown = JSON.parse(raw);
-		const session = validateSession(parsed);
-		if (!session) {
-			console.error('[persist] stored session has an unexpected shape', parsed);
+		const sessions = parseSessions(parsed);
+		if (!sessions) {
+			console.error('[persist] stored sessions have an unexpected shape', parsed);
 			return null;
 		}
-		return session;
+		return sessions.entries[key] ?? null;
 	} catch (error) {
-		console.error('[persist] failed to load session', error);
+		console.error('[persist] failed to load sessions', error);
 		return null;
 	}
 }
 
-export function saveSession(session: PersistedSession): void {
+/**
+ * Store one file's layout, rewriting the whole (tiny) map and pruning the
+ * oldest `savedAt` entries beyond the cap. `savedAt` is injectable so tests can
+ * pin eviction order deterministically.
+ */
+export function saveSession(
+	key: string,
+	segments: PersistedSegment[],
+	savedAt: number = Date.now()
+): void {
 	try {
 		const storage = resolveStorage();
 		if (!storage) return;
-		storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+		const sessions = readSessions(storage);
+		sessions.entries[key] = { segments, savedAt };
+		const keys = Object.keys(sessions.entries);
+		if (keys.length > MAX_STORED_SESSIONS) {
+			keys
+				.sort((a, b) => sessions.entries[a].savedAt - sessions.entries[b].savedAt)
+				.slice(0, keys.length - MAX_STORED_SESSIONS)
+				.forEach((oldest) => delete sessions.entries[oldest]);
+		}
+		storage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
 	} catch (error) {
 		console.error('[persist] failed to save session', error);
 	}

@@ -2,6 +2,7 @@ import {
 	autoSplit,
 	clampSegment,
 	computeCoverage,
+	newSegmentId,
 	nudge,
 	setField,
 	sortSegments,
@@ -11,7 +12,14 @@ import {
 	type Segment
 } from '../domain/segments';
 import type { QualityPreset, VideoMeta } from '../domain/bitrate';
-import { fileKey, loadSession, loadSettings, saveSession, saveSettings } from './persist';
+import {
+	fileKey,
+	loadSession,
+	loadSettings,
+	saveSession,
+	saveSettings,
+	type PersistedSegment
+} from './persist';
 
 const PERSIST_DEBOUNCE_MS = 300;
 const SEGMENT_EPSILON = 1e-3;
@@ -37,7 +45,7 @@ export class ProjectState {
 
 	#settingsTimer: ReturnType<typeof setTimeout> | null = null;
 	#sessionTimer: ReturnType<typeof setTimeout> | null = null;
-	#pendingSession: { key: string; segments: Segment[] } | null = null;
+	#pendingSession: { key: string; segments: PersistedSegment[] } | null = null;
 
 	constructor() {
 		// Apply persisted settings before any file loads. Written straight to the
@@ -131,37 +139,50 @@ export class ProjectState {
 
 	#restoreSegments(): Segment[] | null {
 		if (!this.file) return null;
-		const session = loadSession();
-		if (!session) return null;
-		if (session.fileKey !== fileKey(this.file)) return null;
+		// The stored map is keyed by file identity, so loading a different file
+		// simply finds no entry and falls through to auto-split.
+		const layout = loadSession(fileKey(this.file));
+		if (!layout) return null;
+		const stored: Segment[] = layout.segments.map((segment) => ({
+			id: newSegmentId(),
+			start: segment.start,
+			end: segment.end
+		}));
 		const opts = this.#opts();
-		const restored = session.segments.map((segment) => clampSegment(segment, opts));
+		const restored = stored.map((segment) => clampSegment(segment, opts));
 		// Any segment the clamp had to change (out of range, wrong length) means
 		// the whole session is stale: discard it and fall back to auto-split.
 		const fits = restored.every(
 			(clamped, index) =>
-				Math.abs(clamped.start - session.segments[index].start) < SEGMENT_EPSILON &&
-				Math.abs(clamped.end - session.segments[index].end) < SEGMENT_EPSILON
+				Math.abs(clamped.start - stored[index].start) < SEGMENT_EPSILON &&
+				Math.abs(clamped.end - stored[index].end) < SEGMENT_EPSILON
 		);
 		return fits ? restored : null;
+	}
+
+	#writeSettings(): void {
+		saveSettings({
+			version: 1,
+			preset: this.#preset,
+			crop916: this.#crop916,
+			maxClipDuration: this.#maxClipDuration
+		});
 	}
 
 	#scheduleSettingsSave(): void {
 		if (this.#settingsTimer) clearTimeout(this.#settingsTimer);
 		this.#settingsTimer = setTimeout(() => {
 			this.#settingsTimer = null;
-			saveSettings({
-				version: 1,
-				preset: this.#preset,
-				crop916: this.#crop916,
-				maxClipDuration: this.#maxClipDuration
-			});
+			this.#writeSettings();
 		}, PERSIST_DEBOUNCE_MS);
 	}
 
 	#scheduleSessionSave(): void {
 		if (!this.file) return;
-		this.#pendingSession = { key: fileKey(this.file), segments: this.segments };
+		this.#pendingSession = {
+			key: fileKey(this.file),
+			segments: this.segments.map(({ start, end }) => ({ start, end }))
+		};
 		if (this.#sessionTimer) clearTimeout(this.#sessionTimer);
 		this.#sessionTimer = setTimeout(() => {
 			this.#sessionTimer = null;
@@ -176,7 +197,24 @@ export class ProjectState {
 		// The file may have changed since the snapshot was taken; never write a
 		// layout under a key it does not belong to.
 		if (!this.file || fileKey(this.file) !== pending.key) return;
-		saveSession({ version: 1, fileKey: pending.key, segments: pending.segments });
+		saveSession(pending.key, pending.segments);
+	}
+
+	/**
+	 * Synchronously flush any debounced writes. Called from the page's
+	 * `pagehide`/hidden handler so a tab close cannot drop the last edit.
+	 */
+	flushPendingWrites(): void {
+		if (this.#settingsTimer) {
+			clearTimeout(this.#settingsTimer);
+			this.#settingsTimer = null;
+			this.#writeSettings();
+		}
+		if (this.#sessionTimer) {
+			clearTimeout(this.#sessionTimer);
+			this.#sessionTimer = null;
+		}
+		this.#writePendingSession();
 	}
 
 	setMaxClipDuration(value: number): void {

@@ -6,9 +6,10 @@ import {
 	saveSession,
 	saveSettings,
 	setStorageForTests,
-	SESSION_STORAGE_KEY,
+	MAX_STORED_SESSIONS,
+	SESSIONS_STORAGE_KEY,
 	SETTINGS_STORAGE_KEY,
-	type PersistedSession,
+	type PersistedSegment,
 	type PersistedSettings
 } from './persist';
 
@@ -37,14 +38,10 @@ const settings: PersistedSettings = {
 	maxClipDuration: 15
 };
 
-const session: PersistedSession = {
-	version: 1,
-	fileKey: 'video.mp4|1024|1700000000000',
-	segments: [
-		{ id: 'a', start: 0, end: 15 },
-		{ id: 'b', start: 15, end: 30 }
-	]
-};
+const layoutSegments: PersistedSegment[] = [
+	{ start: 0, end: 15 },
+	{ start: 15, end: 30 }
+];
 
 describe('fileKey', () => {
 	it('combines name, size and lastModified', () => {
@@ -147,51 +144,104 @@ describe('session persistence', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('round-trips a session through storage', () => {
-		saveSession(session);
-		expect(storage.getItem(SESSION_STORAGE_KEY)).toBe(JSON.stringify(session));
-		expect(loadSession()).toEqual(session);
+	it('round-trips one file layout through storage', () => {
+		const key = 'video.mp4|1024|1700000000000';
+		saveSession(key, layoutSegments, 1000);
+		expect(loadSession(key)).toEqual({ segments: layoutSegments, savedAt: 1000 });
 	});
 
 	it('returns null when nothing is stored', () => {
-		expect(loadSession()).toBeNull();
+		expect(loadSession('any')).toBeNull();
+	});
+
+	it('returns null for a key that has no stored layout', () => {
+		saveSession('a', layoutSegments, 1000);
+		expect(loadSession('b')).toBeNull();
+	});
+
+	it('keeps layouts for different files side by side', () => {
+		saveSession('a', [{ start: 0, end: 5 }], 1000);
+		saveSession('b', [{ start: 0, end: 9 }], 2000);
+		expect(loadSession('a')?.segments).toEqual([{ start: 0, end: 5 }]);
+		expect(loadSession('b')?.segments).toEqual([{ start: 0, end: 9 }]);
+	});
+
+	it('replaces an existing layout without growing the map', () => {
+		saveSession('a', [{ start: 0, end: 5 }], 1000);
+		saveSession('a', [{ start: 0, end: 7 }], 2000);
+		expect(loadSession('a')).toEqual({ segments: [{ start: 0, end: 7 }], savedAt: 2000 });
+		const stored = JSON.parse(storage.getItem(SESSIONS_STORAGE_KEY) ?? '{}');
+		expect(Object.keys(stored.entries)).toEqual(['a']);
 	});
 
 	it('returns null and logs on corrupt JSON', () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-		storage.setItem(SESSION_STORAGE_KEY, ']]]');
-		expect(loadSession()).toBeNull();
+		storage.setItem(SESSIONS_STORAGE_KEY, ']]]');
+		expect(loadSession('a')).toBeNull();
 		expect(error).toHaveBeenCalled();
 	});
 
-	it('returns null and logs on a wrong shape', () => {
+	it('returns null and logs on a wrong top-level shape', () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		storage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify({ version: 1, fileKey: 'k' }));
+		expect(loadSession('k')).toBeNull();
+		expect(error).toHaveBeenCalled();
+	});
+
+	it('returns null and logs on a different map version', () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 		storage.setItem(
-			SESSION_STORAGE_KEY,
-			JSON.stringify({ version: 1, fileKey: 'k', segments: [{ start: 0, end: 5 }] })
+			SESSIONS_STORAGE_KEY,
+			JSON.stringify({ version: 42, entries: { a: { segments: [], savedAt: 1 } } })
 		);
-		expect(loadSession()).toBeNull();
+		expect(loadSession('a')).toBeNull();
 		expect(error).toHaveBeenCalled();
 	});
 
-	it('returns null and logs on a different session version', () => {
-		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-		storage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...session, version: 42 }));
-		expect(loadSession()).toBeNull();
-		expect(error).toHaveBeenCalled();
-	});
-
-	it('returns null and logs when a segment is structurally invalid', () => {
+	it('drops a structurally invalid entry but keeps the valid ones', () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 		storage.setItem(
-			SESSION_STORAGE_KEY,
+			SESSIONS_STORAGE_KEY,
 			JSON.stringify({
-				version: 1,
-				fileKey: 'k',
-				segments: [{ id: 'a', start: 10, end: 5 }]
+				version: 2,
+				entries: {
+					bad: { segments: [{ start: 10, end: 5 }], savedAt: 1 },
+					good: { segments: [{ start: 0, end: 5 }], savedAt: 2 }
+				}
 			})
 		);
-		expect(loadSession()).toBeNull();
+		expect(loadSession('bad')).toBeNull();
+		expect(loadSession('good')).toEqual({ segments: [{ start: 0, end: 5 }], savedAt: 2 });
+		expect(error).toHaveBeenCalled();
+	});
+
+	it('prunes the oldest entries beyond the cap on write', () => {
+		for (let i = 0; i < MAX_STORED_SESSIONS; i++) {
+			saveSession(`file-${i}`, [{ start: 0, end: i + 1 }], 1000 + i);
+		}
+		// One more write pushes the map over the cap: the lowest savedAt goes.
+		saveSession('newest', [{ start: 0, end: 99 }], 5000);
+
+		expect(loadSession('file-0')).toBeNull();
+		expect(loadSession('file-1')).not.toBeNull();
+		expect(loadSession('newest')).not.toBeNull();
+		const stored = JSON.parse(storage.getItem(SESSIONS_STORAGE_KEY) ?? '{}');
+		expect(Object.keys(stored.entries).length).toBe(MAX_STORED_SESSIONS);
+	});
+
+	it('never throws when the storage backend fails', () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const broken = {
+			getItem: () => {
+				throw new Error('denied');
+			},
+			setItem: () => {
+				throw new Error('denied');
+			}
+		} as unknown as Storage;
+		setStorageForTests(broken);
+		expect(loadSession('a')).toBeNull();
+		expect(() => saveSession('a', layoutSegments, 1)).not.toThrow();
 		expect(error).toHaveBeenCalled();
 	});
 });

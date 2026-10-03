@@ -71,7 +71,8 @@ network each time and nothing is cached between visits.
 Exports can optionally be center-cropped to 9:16 for full-screen statuses
 (toggle in the export panel).
 
-Settings and per-file clip layouts are remembered locally (localStorage); nothing leaves the machine.
+Settings and the clip layouts of your most recent files are remembered locally
+(localStorage); nothing leaves the machine.
 
 ## Limits & presets
 
@@ -100,28 +101,29 @@ versions may accept 60–90s clips, so the max clip length is configurable up to
 
 - **Chrome on macOS** is the supported target.
 - **Safari / Firefox** are not a supported path. When a file's codec can't be
-  decoded, the app shows an in-app notice recommending Chrome or an H.264 MP4.
-  This is a codec-level, programmatic check, so Chrome on macOS can hit the same
-  notice for an undecodable codec.
+  decoded, the app offers the same on-device [compatibility
+  mode](#compatibility-mode) (a local transcode to H.264/AAC MP4). This is a
+  codec-level, programmatic check, so Chrome on macOS can hit it too.
 
 ## Compatibility mode
 
-When the app can't read a video at all — the browser rejects the container or
-codec (e.g. an old AVI or MOV) — it offers **compatibility mode**: a local,
+When the app can't load a video normally — the browser rejects the container
+(e.g. an old AVI or MOV) **or** it parses the container but cannot decode the
+codec (e.g. HEVC on Windows Chrome) — it offers **compatibility mode**: a local,
 on-device transcode to a standard H.264/AAC MP4 via
 [ffmpeg.wasm](https://ffmpegwasm.netlify.app/), which is then loaded through the
 normal split/export pipeline.
 
-- **When it triggers:** only when the initial file read fails. Videos that load
-  normally never touch it.
+- **When it triggers:** only when the initial file read fails or its codec can't
+  be decoded. Videos that load normally never touch it.
 - **Single-threaded by design:** the single-thread `@ffmpeg/core` is used (no
   COOP/COEP headers, no multi-thread build). It is **slow on long videos** — a
   minute of phone footage can take several minutes to convert.
-- **Served by the app itself:** the ffmpeg core assets (~20MB wasm) are bundled
-  and served by this app, so the first use downloads a few MB. **Nothing is
-  uploaded elsewhere** — the transcode happens entirely on your machine.
-- **Cancel:** you can cancel mid-conversion; nothing is loaded until the
-  converted file is ready.
+- **Served by the app itself:** the ffmpeg core wasm (~31MB) is bundled and
+  served by this app, so the first use downloads it once. **Nothing is uploaded
+  elsewhere** — the transcode happens entirely on your machine.
+- **Cancel:** you can cancel mid-conversion (including while the core is still
+  downloading); nothing is loaded until the converted file is ready.
 
 ## Testing
 
@@ -184,10 +186,8 @@ src/
 ## Non-goals
 
 - No server, database, auth, or uploads.
-- No persistence across page refresh.
 - No arbitrary cropping/aspect-ratio changes (the only crop is the optional 9:16 center-crop), filters, music, watermarks, subtitles, or speed changes.
 - No scene/silence-based auto-splitting — equal chunks plus manual handles only.
 - No drag-to-reorder; clip order always follows timeline order.
 - No offline mode — installable as a PWA, but there is no service worker.
-- No ffmpeg.wasm fallback in v1.
 - No multi-file queue — one video at a time.
