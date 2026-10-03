@@ -21,4 +21,10 @@ describe('DropZone', () => {
 			'nope'
 		);
 	});
+
+	it('keeps the file input focusable (not display:none)', async () => {
+		const screen = await render(DropZone, { onFile: () => {} });
+		const input = screen.container.querySelector('[data-testid="file-input"]') as HTMLInputElement;
+		expect(getComputedStyle(input).display).not.toBe('none');
+	});
 });

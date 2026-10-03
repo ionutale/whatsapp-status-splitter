@@ -18,4 +18,22 @@ describe('page shell', () => {
 			.toContain('tiny-5s.mp4');
 		expect(screen.container.querySelector('[data-testid="timeline-slot"]')).not.toBeNull();
 	});
+
+	it('accepts a file dropped anywhere on the page', async () => {
+		const screen = await render(Page);
+		const blob = await (await fetch(tiny5sUrl)).blob();
+		const transfer = new DataTransfer();
+		transfer.items.add(new File([blob], 'dropped.mp4', { type: 'video/mp4' }));
+		const event = new DragEvent('drop', {
+			dataTransfer: transfer,
+			bubbles: true,
+			cancelable: true
+		});
+		window.dispatchEvent(event);
+
+		expect(event.defaultPrevented).toBe(true);
+		await expect
+			.poll(() => screen.container.querySelector('[data-testid="file-name"]')?.textContent)
+			.toContain('dropped.mp4');
+	});
 });

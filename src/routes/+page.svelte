@@ -6,15 +6,18 @@
 	let loading = $state(false);
 	let loadError = $state<string | null>(null);
 	let objectUrl = $state<string | null>(null);
+	let loadToken = 0;
 
 	async function handleFile(file: File) {
 		if (project.dirty && !confirm('Discard the current editing state and load a new video?'))
 			return;
+		const token = ++loadToken;
 		loadError = null;
 		project.begin(file);
 		loading = true;
 		try {
 			const { duration, meta } = await inspectFile(file);
+			if (token !== loadToken) return;
 			const blocked = assertDecodable(meta);
 			if (blocked) {
 				loadError = blocked;
@@ -24,13 +27,23 @@
 			objectUrl = URL.createObjectURL(file);
 			project.ready(duration, meta);
 		} catch (error) {
+			if (token !== loadToken) return;
 			console.error('[load] failed to load video', error);
 			loadError = error instanceof Error ? error.message : String(error);
 		} finally {
-			loading = false;
+			if (token === loadToken) loading = false;
 		}
 	}
 </script>
+
+<svelte:window
+	ondragover={(event) => event.preventDefault()}
+	ondrop={(event) => {
+		event.preventDefault();
+		const file = event.dataTransfer?.files?.[0];
+		if (file) handleFile(file);
+	}}
+/>
 
 <div class="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 p-4">
 	<header class="flex items-center justify-between">
@@ -41,10 +54,10 @@
 	</header>
 
 	{#if project.error}
-		<div class="alert alert-error" data-testid="error-banner">{project.error}</div>
+		<div class="alert alert-error" role="alert" data-testid="error-banner">{project.error}</div>
 	{/if}
 	{#if project.notice}
-		<div class="alert alert-warning" data-testid="notice-banner">{project.notice}</div>
+		<div class="alert alert-warning" role="alert" data-testid="notice-banner">{project.notice}</div>
 	{/if}
 
 	{#if !project.meta}
