@@ -104,6 +104,30 @@ describe('realEncodeClip', () => {
 		}
 	});
 
+	it('center-crops the encoded output to 720x1280 when the plan requests 9:16', async () => {
+		const file = await loadFixture(tiny5sUrl, 'tiny-5s.mp4');
+		const { meta } = await inspectFile(file);
+		const plan = buildOutputPlan(1, meta, 'whatsapp', { crop916: true });
+		expect(plan.fit).toBe('cover');
+		const handle = realEncodeClip({
+			file,
+			segment: { id: 'a', start: 0, end: 1 },
+			plan,
+			onProgress: () => {}
+		});
+		const blob = await handle.result;
+		const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+		try {
+			const videoTrack = await input.getPrimaryVideoTrack();
+			const width = await videoTrack!.getDisplayWidth();
+			const height = await videoTrack!.getDisplayHeight();
+			expect(width).toBe(720);
+			expect(height).toBe(1280);
+		} finally {
+			input.dispose();
+		}
+	});
+
 	it('discards audio when the plan targets no audio', async () => {
 		const file = await loadFixture(noAudioUrl, 'tiny-noaudio.mp4');
 		const { meta } = await inspectFile(file);

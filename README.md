@@ -32,17 +32,22 @@ pnpm preview   # serve the built output locally
 
 ## Install as an app
 
-The app is installable as a PWA — no store, no account:
+The app is installable as a PWA — no store, no account. Installation is a
+convenience (home-screen icon, standalone window); it does **not** widen the
+supported processing target, which stays **Chrome on macOS** (see
+[Browser support](#browser-support)):
 
+- **Desktop Chrome** — click the install icon in the address bar. This is the
+  supported processing path.
+- **Android Chrome** — open the browser menu, then tap **Install app**. Chrome
+  for Android also ships WebCodecs, but phone processing is untested and not
+  supported.
 - **iPhone / iPad** — open the site in Safari, tap **Share**, then **Add to Home
-  Screen**.
-- **Android** — open it in Chrome, open the browser menu, then tap **Install
-  app**.
-- **Desktop Chrome** — click the install icon in the address bar.
+  Screen**. Every iOS browser is WebKit, so the in-app browser-support notice
+  still applies; iOS is not a supported processing path.
 
-Everything is processed on-device, so export speed depends on your phone's CPU
-and codec support. There is **no service worker and no offline mode**: the page
-must load from the network each time and nothing is cached between visits.
+There is **no service worker and no offline mode**: the page must load from the
+network each time and nothing is cached between visits.
 
 ## Usage
 
@@ -157,7 +162,7 @@ src/
 
 - No server, database, auth, or uploads.
 - No persistence across page refresh.
-- No cropping/aspect-ratio changes, filters, music, watermarks, subtitles, or speed changes.
+- No arbitrary cropping/aspect-ratio changes (the only crop is the optional 9:16 center-crop), filters, music, watermarks, subtitles, or speed changes.
 - No scene/silence-based auto-splitting — equal chunks plus manual handles only.
 - No drag-to-reorder; clip order always follows timeline order.
 - No offline mode — installable as a PWA, but there is no service worker.

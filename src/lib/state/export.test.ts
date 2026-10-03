@@ -9,6 +9,7 @@ const job = (id: string): ExportJob => ({
 	plan: {
 		width: 320,
 		height: 240,
+		fit: 'contain',
 		frameRate: 30,
 		videoKbps: 1000,
 		audioKbps: 128,

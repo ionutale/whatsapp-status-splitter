@@ -47,9 +47,10 @@
 		lastPxPerSecond = pps;
 	});
 
-	// Keep the playhead in view as it moves. Only nudge when it drifts past a
-	// small margin (so a user scroll is never fought), and do nothing when the
-	// whole timeline already fits without scrolling.
+	// Keep the playhead in view as it moves. Only writes scrollLeft when the
+	// playhead drifts past a small margin, so ordinary playback doesn't scroll
+	// every tick — but a deliberate scroll away from the playhead is re-centered
+	// on the next tick (~4x/sec). No-op when the whole timeline already fits.
 	const PLAYHEAD_MARGIN = 24;
 	$effect(() => {
 		const pps = pxPerSecond;

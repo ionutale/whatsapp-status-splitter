@@ -15,7 +15,7 @@ export type VideoMeta = {
 export type OutputPlan = {
 	width: number;
 	height: number;
-	fit?: 'contain' | 'cover';
+	fit: 'contain' | 'cover';
 	frameRate: number;
 	videoKbps: number;
 	audioKbps: number;
