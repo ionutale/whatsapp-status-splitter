@@ -37,12 +37,13 @@ pnpm preview   # serve the built output locally
    as a normal file drop). One video at a time; loading another replaces the
    current project.
 2. **Split** — the video is auto-split into equal clips of at most the max clip
-   length. Change **Max clip length** and press **Reset** to re-split.
+   length. Change **Max clip length** and press **Reset to auto-split** to
+   re-split.
 3. **Trim** — drag a clip's handles, type exact values into the numeric start /
    end / duration fields, or focus a handle with **Tab** and nudge it with
    **←/→** (0.1s) or **Shift+←/→** (1s).
-4. **Edit clips** — **Split** at the playhead, **Delete** the selected clip, or
-   **Reset** to discard manual edits and re-split.
+4. **Edit clips** — **Split in half** the selected clip at its midpoint,
+   **Delete** it, or **Reset to auto-split** to discard manual edits.
 5. **Export** — **Download** an individual clip, **Share** it via the macOS
    share sheet (directly to WhatsApp / AirDrop), or **Export all (ZIP)** to get
    every clip in one archive. Clips are encoded sequentially with live progress,
@@ -74,9 +75,10 @@ versions may accept 60–90s clips, so the max clip length is configurable up to
 ## Browser support
 
 - **Chrome on macOS** is the supported target.
-- **Safari / Firefox** show an in-app notice when a video's codec cannot be
-  decoded (i.e. WebCodecs support is missing), recommending Chrome or an H.264
-  MP4. They are not a supported path.
+- **Safari / Firefox** are not a supported path. When a file's codec can't be
+  decoded, the app shows an in-app notice recommending Chrome or an H.264 MP4.
+  This is a codec-level, programmatic check, so Chrome on macOS can hit the same
+  notice for an undecodable codec.
 
 ## Testing
 
@@ -88,6 +90,10 @@ pnpm check                # svelte-check + TypeScript
 pnpm lint                 # Prettier + ESLint
 ```
 
+`pnpm test` runs the unit suite plus dev-mode e2e in one go. `pnpm test:e2e`
+first runs `playwright install chromium`, so run it once on a fresh clone;
+`pnpm test:e2e:build` assumes Chromium is already installed and skips that step.
+
 Fixtures live in `static/test-fixtures/` (tiny synthetic MP4s) and can be
 regenerated with ffmpeg:
 
@@ -97,7 +103,9 @@ bash static/test-fixtures/generate.sh
 
 The rotated fixture is produced with `-display_rotation -90`: ffmpeg and
 Mediabunny use opposite rotation conventions, and the script comment explains
-why the sign is flipped.
+why the sign is flipped. Because the fixtures live under `static/`, they
+(including `generate.sh`) are copied into `build/` by `pnpm build` — expected,
+about 650 KB.
 
 ## Manual smoke checklist
 
