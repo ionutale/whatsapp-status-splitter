@@ -24,5 +24,8 @@ export default defineConfig({
 		// genuinely busy port fails fast and loudly instead.
 		reuseExistingServer: false
 	},
-	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
+	projects: [
+		{ name: 'chromium', use: { ...devices['Desktop Chrome'] }, testMatch: 'splitter.spec.ts' },
+		{ name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: 'mobile.spec.ts' }
+	]
 });
