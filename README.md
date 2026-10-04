@@ -69,6 +69,16 @@ the supported target.
 Exports can optionally be center-cropped to 9:16 for full-screen statuses
 (toggle in the export panel).
 
+### On your phone
+
+At phone widths the editor collapses to a single column: load a clip straight
+from Photos, trim it with the **trim bar**'s large touch handles, tap a chip to
+switch clips, then **Share** the finished MP4 straight to WhatsApp. The desktop
+layout keeps the full precision timeline, filmstrip, and numeric fields.
+
+![WhatsApp Status Splitter phone view: a trim bar with large touch handles,
+clip chips, and the export panel](docs/screenshot-phone.png)
+
 ## Limits & presets
 
 | Constraint         | Value                                                                                    |
@@ -179,7 +189,7 @@ pnpm lint                 # Prettier + ESLint
 regenerable too, with a dev server running:
 
 ```sh
-node scripts/screenshot.mjs   # refreshes docs/screenshot.png (dark hero) + light/dark variants
+node scripts/screenshot.mjs   # refreshes docs/screenshot.png (dark hero), the light/dark variants, and docs/screenshot-phone.png
 ```
 
 Automated tests use synthetic fixtures. Real-phone validation is still a manual
