@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import '../../routes/layout.css';
 import type { Segment } from '../domain/segments';
 import TrimBar from './TrimBar.svelte';
 
@@ -159,6 +161,79 @@ describe('TrimBar', () => {
 		expect(bar.dataset.duration).toBe('0.500');
 		expect(screen.container.querySelector('[data-testid="trim-handle-start"]')).not.toBeNull();
 		expect(screen.container.querySelector('[data-testid="trim-handle-end"]')).not.toBeNull();
+	});
+
+	it('keeps the handle hit bands from overlapping for a short clip at phone width', async () => {
+		// Phone geometry: a 390px viewport leaves the track ~366px wide, so
+		// the handles of a 0.5s clip sit ~28px apart — closer than the fixed
+		// 44px hit bands, which overlap and let the end handle (later in the
+		// DOM) steal presses aimed at the start handle.
+		await page.viewport(390, 844);
+		try {
+			const { screen } = await mount({
+				segment: { id: 's1', start: 9, end: 9.5 },
+				duration: 60
+			});
+			const startRect = (
+				screen.container.querySelector('[data-testid="trim-handle-start"]') as HTMLElement
+			).getBoundingClientRect();
+			const endRect = (
+				screen.container.querySelector('[data-testid="trim-handle-end"]') as HTMLElement
+			).getBoundingClientRect();
+			expect(startRect.right).toBeLessThanOrEqual(endRect.left);
+		} finally {
+			await page.viewport(1280, 720);
+		}
+	});
+
+	it('moves the start edge when a contested press lands in the start handle band', async () => {
+		// Extreme geometry: a 0.25s clip at phone width leaves the handles
+		// ~15px apart, so the 16px floor bands still overlap and the end
+		// handle (later in the DOM) wins the hit test for contested pixels.
+		// Simulate that hit-test outcome: pointerdown targets the end handle
+		// at a clientX inside the start handle's band (its centre). The drag
+		// must move the start edge, not the end edge.
+		await page.viewport(390, 844);
+		try {
+			const onChange = vi.fn();
+			const { screen, bar } = await mount({
+				segment: { id: 's1', start: 9, end: 9.25 },
+				duration: 60,
+				onChange
+			});
+			const pps = Number(bar.dataset.pps);
+			const startRect = (
+				screen.container.querySelector('[data-testid="trim-handle-start"]') as HTMLElement
+			).getBoundingClientRect();
+			const endHandle = screen.container.querySelector(
+				'[data-testid="trim-handle-end"]'
+			) as HTMLElement;
+			const pressX = startRect.left + startRect.width / 2;
+			const pressY = startRect.top + startRect.height / 2;
+			endHandle.dispatchEvent(
+				new PointerEvent('pointerdown', {
+					clientX: pressX,
+					clientY: pressY,
+					bubbles: true,
+					pointerId: 1
+				})
+			);
+			endHandle.dispatchEvent(
+				new PointerEvent('pointermove', {
+					clientX: pressX + 30,
+					clientY: pressY,
+					bubbles: true,
+					pointerId: 1
+				})
+			);
+			const [id, next, moved] = onChange.mock.calls.at(-1)!;
+			expect(id).toBe('s1');
+			expect(moved).toBe('start');
+			expect(next.start).toBeCloseTo(9 + 30 / pps, 3);
+			expect(next.end).toBe(9.25);
+		} finally {
+			await page.viewport(1280, 720);
+		}
 	});
 
 	it('fires split and delete from the quick actions', async () => {

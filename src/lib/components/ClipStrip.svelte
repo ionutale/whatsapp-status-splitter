@@ -26,11 +26,12 @@
 	const plusDisabled = $derived(maxClipDuration >= MAX_MAX_CLIP_DURATION);
 
 	function step(delta: number) {
-		const current = Math.min(
-			Math.max(maxClipDuration, MIN_MAX_CLIP_DURATION),
+		// The stepper buttons are disabled at the bounds, so `maxClipDuration`
+		// is always in range here and the clamp is all the validation needed.
+		const next = Math.min(
+			Math.max(maxClipDuration + delta, MIN_MAX_CLIP_DURATION),
 			MAX_MAX_CLIP_DURATION
 		);
-		const next = Math.min(Math.max(current + delta, MIN_MAX_CLIP_DURATION), MAX_MAX_CLIP_DURATION);
 		onMaxClipDurationChange(next);
 	}
 </script>

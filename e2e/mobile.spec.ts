@@ -13,9 +13,10 @@ async function loadFixture(page: Page, name: string) {
 // listen for (the touchscreen API only taps). Drags to an absolute viewport x so
 // a far-left/right move is guaranteed to overshoot the clamp, not depend on pps.
 async function dragHandleTo(page: Page, testId: string, targetX: number) {
-	const box = (await page.getByTestId(testId).boundingBox())!;
-	const cy = box.y + box.height / 2;
-	await page.mouse.move(box.x + box.width / 2, cy);
+	const box = await page.getByTestId(testId).boundingBox();
+	expect(box).not.toBeNull();
+	const cy = box!.y + box!.height / 2;
+	await page.mouse.move(box!.x + box!.width / 2, cy);
 	await page.mouse.down();
 	await page.mouse.move(targetX, cy, { steps: 12 });
 	await page.mouse.up();
@@ -25,6 +26,15 @@ test('phone editor replaces the desktop timeline at the Pixel viewport', async (
 	await loadFixture(page, 'tiny-5s.mp4');
 	await expect(page.getByTestId('phone-editor')).toBeVisible();
 	await expect(page.getByTestId('trim-bar')).toBeVisible();
+	await expect(page.getByTestId('segment-bar')).toHaveCount(0);
+});
+
+test('landscape phone still gets the phone column', async ({ page }) => {
+	// The Pixel 7 viewport is 412×839; rotated it is 839×412 — wide enough
+	// that a width-only breakpoint would wrongly show the desktop editor.
+	await page.setViewportSize({ width: 839, height: 412 });
+	await loadFixture(page, 'tiny-5s.mp4');
+	await expect(page.getByTestId('phone-editor')).toBeVisible();
 	await expect(page.getByTestId('segment-bar')).toHaveCount(0);
 });
 

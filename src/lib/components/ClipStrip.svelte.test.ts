@@ -126,4 +126,14 @@ describe('ClipStrip', () => {
 		).click();
 		expect(props.onReset).toHaveBeenCalled();
 	});
+
+	it('renders no chips without crashing when there are no segments', async () => {
+		const props = makeProps({ segments: [] });
+		const screen = await render(ClipStrip, props);
+		expect(screen.container.querySelectorAll('[data-testid="clip-chip"]')).toHaveLength(0);
+		expect(screen.container.querySelector('[data-testid="clip-strip"]')).not.toBeNull();
+		expect(screen.container.querySelector('[data-testid="max-clip-value"]')?.textContent).toContain(
+			'30'
+		);
+	});
 });

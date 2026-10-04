@@ -194,7 +194,11 @@ node scripts/screenshot.mjs   # refreshes docs/screenshot.png (dark hero), the l
 ```
 
 For a multi-clip screenshot, point `SCREENSHOT_FIXTURE` at a longer video — the
-committed shots use a generated 80-second test clip.
+committed shots use a generated 80-second test clip:
+
+```sh
+ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=80 -f lavfi -i sine=frequency=440:duration=80 -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p -c:a aac -shortest hero-80s.mp4
+```
 
 Automated tests use synthetic fixtures. Real-phone validation is still a manual
 smoke pass: load an iPhone HEVC clip, trim, export, and confirm **≤16MB** and

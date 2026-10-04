@@ -25,7 +25,20 @@ export default defineConfig({
 		reuseExistingServer: false
 	},
 	projects: [
-		{ name: 'chromium', use: { ...devices['Desktop Chrome'] }, testMatch: 'splitter.spec.ts' },
-		{ name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: 'mobile.spec.ts' }
+		// Match every spec file, then ignore the other project's spec by name:
+		// a future spec file is picked up by both projects instead of being
+		// silently dropped from one.
+		{
+			name: 'chromium',
+			use: { ...devices['Desktop Chrome'] },
+			testMatch: '*.spec.ts',
+			testIgnore: 'mobile.spec.ts'
+		},
+		{
+			name: 'mobile',
+			use: { ...devices['Pixel 7'] },
+			testMatch: '*.spec.ts',
+			testIgnore: 'splitter.spec.ts'
+		}
 	]
 });

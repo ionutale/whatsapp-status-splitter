@@ -53,6 +53,16 @@
 	const startPx = $derived(toPx(segment.start));
 	const endPx = $derived(toPx(segment.end));
 
+	// Hit bands must never overlap: each handle gets at most half the distance
+	// to the other handle's centre, so a press between two close handles can't
+	// be stolen by whichever handle is later in the DOM. The 16px floor keeps
+	// a usable touch target for very short clips; when the floor still
+	// overlaps (gap < 16px), startDrag resolves contested pixels to the
+	// nearest handle.
+	const gapPx = $derived(Math.max(endPx - startPx, 0));
+	const hitWidth = $derived(Math.min(Math.max(gapPx / 2, 16), 44));
+	const bandsOverlap = $derived(hitWidth > gapPx);
+
 	$effect(() => {
 		if (editing && inputEl) {
 			inputEl.focus();
@@ -62,6 +72,15 @@
 
 	function startDrag(edge: 'start' | 'end', event: PointerEvent) {
 		event.stopPropagation();
+		// When the hit bands overlap (very short clips on narrow screens), the
+		// handle later in the DOM wins the hit test for contested pixels. Send
+		// those pixels to the nearer handle instead, so a press in the start
+		// handle's half of the overlap moves the start edge.
+		if (bandsOverlap) {
+			const track = (event.currentTarget as HTMLElement).parentElement as HTMLElement;
+			const x = event.clientX - track.getBoundingClientRect().left;
+			edge = Math.abs(x - startPx) <= Math.abs(x - endPx) ? 'start' : 'end';
+		}
 		const target = event.currentTarget as HTMLElement;
 		try {
 			target.setPointerCapture(event.pointerId);
@@ -152,9 +171,10 @@
 	<div class="flex items-center justify-center gap-1 font-mono text-xs">
 		{#if editing === 'start'}
 			<input
-				class="input h-11 w-24 text-center input-xs"
+				class="input h-11 w-24 text-center"
 				data-testid="trim-input"
 				aria-label={`Clip ${index + 1} start`}
+				inputmode="decimal"
 				bind:value={editValue}
 				bind:this={inputEl}
 				onblur={commitEdit}
@@ -173,9 +193,10 @@
 		<span class="text-base-content/40">·</span>
 		{#if editing === 'end'}
 			<input
-				class="input h-11 w-24 text-center input-xs"
+				class="input h-11 w-24 text-center"
 				data-testid="trim-input"
 				aria-label={`Clip ${index + 1} end`}
+				inputmode="decimal"
 				bind:value={editValue}
 				bind:this={inputEl}
 				onblur={commitEdit}
@@ -201,8 +222,8 @@
 			style="left:{startPx}px; width:{Math.max(endPx - startPx, 0)}px"
 		></div>
 		<span
-			class="handle absolute top-0 h-full w-11 -translate-x-1/2 cursor-ew-resize"
-			style="left:{startPx}px"
+			class="handle absolute top-0 h-full -translate-x-1/2 cursor-ew-resize"
+			style="left:{startPx}px; width:{hitWidth}px"
 			role="slider"
 			tabindex="0"
 			aria-label={`Clip ${index + 1} start`}
@@ -222,8 +243,8 @@
 			></span>
 		</span>
 		<span
-			class="handle absolute top-0 h-full w-11 -translate-x-1/2 cursor-ew-resize"
-			style="left:{endPx}px"
+			class="handle absolute top-0 h-full -translate-x-1/2 cursor-ew-resize"
+			style="left:{endPx}px; width:{hitWidth}px"
 			role="slider"
 			tabindex="0"
 			aria-label={`Clip ${index + 1} end`}

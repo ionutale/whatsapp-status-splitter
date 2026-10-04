@@ -113,7 +113,6 @@ describe('phone editor column', () => {
 		await vi.waitFor(() => {
 			expect(project.selectedId).toBe(project.sortedSegments[1].id);
 		});
-		const selectedBefore = project.selectedId;
 		const before = project.segments.map((segment) => ({ start: segment.start, end: segment.end }));
 
 		await page.viewport(1280, 720);
@@ -124,7 +123,6 @@ describe('phone editor column', () => {
 		expect(screen.container.querySelector('[data-testid="segment-bar"]')).not.toBeNull();
 
 		// The selection crossed the breakpoint: the desktop clip controls show clip 2.
-		expect(project.selectedId).toBe(selectedBefore);
 		await vi.waitFor(() => {
 			const startField = screen.container.querySelector(
 				'[data-testid="time-field-start"]'

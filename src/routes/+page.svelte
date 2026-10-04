@@ -31,7 +31,9 @@
 
 	// Phone-first layout: below the `md` breakpoint the editor swaps to a
 	// single-column touch UI. Desktop is untouched (the `{:else}` branch).
-	const isPhone = new MediaQuery('(max-width: 767px)');
+	// Short-and-coarse viewports (a phone in landscape, e.g. 839×412) also get
+	// the phone column; short desktop windows keep `pointer: fine` on desktop.
+	const isPhone = new MediaQuery('(max-width: 767px), (max-height: 500px) and (pointer: coarse)');
 	const selectedIndex = $derived(
 		Math.max(
 			0,

@@ -11,4 +11,11 @@ describe('computeTrimWindow', () => {
 	it('keeps a sane span for a clip equal to the video', () => {
 		expect(computeTrimWindow(0, 5, 5)).toEqual({ windowStart: 0, windowEnd: 5 });
 	});
+	it('pins the degenerate-floor branch with a clip that runs past the video end', () => {
+		// Degenerate input: the clip starts late and extends beyond the video,
+		// so the padded window clamps to a span (7.5s) shorter than the floor
+		// (the 8s clip). The floor branch slides the window right to the full
+		// floor width; deleting it would leave the 2.5s offset above.
+		expect(computeTrimWindow(6.5, 14.5, 10)).toEqual({ windowStart: 2, windowEnd: 10 });
+	});
 });
