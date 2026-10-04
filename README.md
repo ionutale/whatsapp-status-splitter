@@ -72,9 +72,10 @@ Exports can optionally be center-cropped to 9:16 for full-screen statuses
 ### On your phone
 
 At phone widths the editor collapses to a single column: load a clip straight
-from Photos, trim it with the **trim bar**'s large touch handles, tap a chip to
-switch clips, then **Share** the finished MP4 straight to WhatsApp. The desktop
-layout keeps the full precision timeline, filmstrip, and numeric fields.
+from Photos, trim it with the **trim bar**'s large touch handles (tap a label
+to type an exact time), tap a chip to switch clips, then **Share** the finished
+MP4 straight to WhatsApp — where Web Share is available. The desktop layout
+keeps the full precision timeline and filmstrip.
 
 ![WhatsApp Status Splitter phone view: a trim bar with large touch handles,
 clip chips, and the export panel](docs/screenshot-phone.png)
@@ -192,6 +193,9 @@ regenerable too, with a dev server running:
 node scripts/screenshot.mjs   # refreshes docs/screenshot.png (dark hero), the light/dark variants, and docs/screenshot-phone.png
 ```
 
+For a multi-clip screenshot, point `SCREENSHOT_FIXTURE` at a longer video — the
+committed shots use a generated 80-second test clip.
+
 Automated tests use synthetic fixtures. Real-phone validation is still a manual
 smoke pass: load an iPhone HEVC clip, trim, export, and confirm **≤16MB** and
 successful **WhatsApp Status upload**; a rotated source must export upright.
@@ -207,10 +211,6 @@ src/
    ├─ state/               # Svelte 5 runes stores: project + export + batch
    └─ components/          # UI: drop zone, timeline, segment bar/panel, preview, export/batch panels
 ```
-
-## Roadmap
-
-- Mobile-first layout and touch interactions for the editor.
 
 ## License
 
