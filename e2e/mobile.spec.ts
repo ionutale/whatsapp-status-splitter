@@ -91,6 +91,72 @@ test('exports one clip with a part01 name and non-empty bytes', async ({ page })
 	expect(bytes.subarray(4, 8).toString()).toBe('ftyp');
 });
 
+async function stubShare(page: Page, multiFileOk: boolean) {
+	await page.addInitScript((multi) => {
+		(window as unknown as { __shareCalls: string[][] }).__shareCalls = [];
+		Object.defineProperty(navigator, 'canShare', {
+			configurable: true,
+			value: (data?: { files?: File[] }) => (data?.files?.length ?? 0) < 2 || multi
+		});
+		Object.defineProperty(navigator, 'share', {
+			configurable: true,
+			value: async (data: { files?: File[] }) => {
+				(window as unknown as { __shareCalls: string[][] }).__shareCalls.push(
+					(data.files ?? []).map((f) => f.name)
+				);
+			}
+		});
+	}, multiFileOk);
+}
+
+test('share all sends both clips in one share call', async ({ page }) => {
+	test.setTimeout(120_000);
+	await stubShare(page, true);
+	await loadFixture(page, 'tiny-5s.mp4');
+	await page.getByTestId('trim-action-split').click();
+	await page.getByTestId('btn-share-all').click();
+	await expect
+		.poll(
+			() => page.evaluate(() => (window as unknown as { __shareCalls: string[][] }).__shareCalls),
+			{
+				timeout: 60_000
+			}
+		)
+		.toEqual([['tiny-5s_part01.mp4', 'tiny-5s_part02.mp4']]);
+});
+
+test('share all walks clip by clip when only single files can be shared', async ({ page }) => {
+	test.setTimeout(120_000);
+	await stubShare(page, false);
+	await loadFixture(page, 'tiny-5s.mp4');
+	await page.getByTestId('trim-action-split').click();
+	await page.getByTestId('btn-share-all').click();
+	await expect(page.getByTestId('share-guided-status')).toContainText('1 of 2', {
+		timeout: 60_000
+	});
+	await page.getByTestId('btn-share-next').click();
+	await expect
+		.poll(
+			() => page.evaluate(() => (window as unknown as { __shareCalls: string[][] }).__shareCalls),
+			{
+				timeout: 60_000
+			}
+		)
+		.toEqual([['tiny-5s_part01.mp4']]);
+	await expect(page.getByTestId('share-guided-status')).toContainText('2 of 2', {
+		timeout: 60_000
+	});
+	await page.getByTestId('btn-share-next').click();
+	await expect
+		.poll(
+			() => page.evaluate(() => (window as unknown as { __shareCalls: string[][] }).__shareCalls),
+			{
+				timeout: 60_000
+			}
+		)
+		.toEqual([['tiny-5s_part01.mp4'], ['tiny-5s_part02.mp4']]);
+});
+
 test('tapping the preview toggles playback', async ({ page }) => {
 	await loadFixture(page, 'tiny-5s.mp4');
 	const video = page.getByTestId('video');
