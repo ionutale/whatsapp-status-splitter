@@ -304,4 +304,77 @@ describe('ExportPanel', () => {
 		);
 		expect(lastNames).not.toContain('vid_part01.mp4');
 	});
+
+	it('walks clip by clip when multi-file sharing is unsupported', async () => {
+		const share = vi.fn<(data: { files: File[] }) => Promise<void>>(async () => {});
+		vi.stubGlobal('navigator', {
+			canShare: (data: { files: File[] }) => data.files.length === 1,
+			share
+		});
+		const screen = await render(ExportPanel, { exporter: makeExporter([]) });
+		(screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement).click();
+		await expect
+			.poll(
+				() => screen.container.querySelector('[data-testid="share-guided-status"]')?.textContent
+			)
+			.toContain('1 of 3');
+		(screen.container.querySelector('[data-testid="btn-share-next"]') as HTMLButtonElement).click();
+		await expect.poll(() => share.mock.calls.length).toBe(1);
+		expect(share.mock.calls[0][0].files.map((f: File) => f.name)).toEqual(['vid_part01.mp4']);
+		await expect
+			.poll(
+				() => screen.container.querySelector('[data-testid="share-guided-status"]')?.textContent
+			)
+			.toContain('2 of 3');
+	});
+
+	it('stays on the same clip when the user cancels the sheet', async () => {
+		const share = vi
+			.fn()
+			.mockRejectedValueOnce(Object.assign(new Error('cancel'), { name: 'AbortError' }))
+			.mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', {
+			canShare: (data: { files: File[] }) => data.files.length === 1,
+			share
+		});
+		const screen = await render(ExportPanel, { exporter: makeExporter([]) });
+		(screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement).click();
+		await expect
+			.poll(() => screen.container.querySelector('[data-testid="btn-share-next"]'))
+			.not.toBeNull();
+		(screen.container.querySelector('[data-testid="btn-share-next"]') as HTMLButtonElement).click();
+		await expect.poll(() => share.mock.calls.length).toBe(1);
+		await expect
+			.poll(
+				() => screen.container.querySelector('[data-testid="share-guided-status"]')?.textContent
+			)
+			.toContain('1 of 3');
+		(screen.container.querySelector('[data-testid="btn-share-next"]') as HTMLButtonElement).click();
+		await expect.poll(() => share.mock.calls.length).toBe(2);
+		await expect
+			.poll(
+				() => screen.container.querySelector('[data-testid="share-guided-status"]')?.textContent
+			)
+			.toContain('2 of 3');
+	});
+
+	it('exits guided mode without sharing', async () => {
+		const share = vi.fn(async () => {});
+		vi.stubGlobal('navigator', {
+			canShare: (data: { files: File[] }) => data.files.length === 1,
+			share
+		});
+		const screen = await render(ExportPanel, { exporter: makeExporter([]) });
+		(screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement).click();
+		await expect
+			.poll(() => screen.container.querySelector('[data-testid="btn-share-guided-exit"]'))
+			.not.toBeNull();
+		(
+			screen.container.querySelector('[data-testid="btn-share-guided-exit"]') as HTMLButtonElement
+		).click();
+		await expect
+			.poll(() => screen.container.querySelector('[data-testid="share-guided-status"]'))
+			.toBeNull();
+		expect(share).not.toHaveBeenCalled();
+	});
 });

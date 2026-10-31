@@ -36,9 +36,11 @@
 
 	type Prepared = { job: (typeof jobs)[number]; blob: Blob };
 
-	let shareAllState = $state<'idle' | 'preparing' | 'ready' | 'sharing'>('idle');
+	let shareAllState = $state<'idle' | 'preparing' | 'ready' | 'sharing' | 'guided'>('idle');
 	let shareAllError = $state<string | null>(null);
 	let preparedFiles = $state<Prepared[] | null>(null);
+	let guidedFiles = $state<Prepared[] | null>(null);
+	let guidedIndex = $state(0);
 
 	const shareAllLabel = $derived.by(() => {
 		if (shareAllState === 'preparing') return 'Preparing…';
@@ -59,6 +61,8 @@
 		shareAllState = 'idle';
 		shareAllError = null;
 		preparedFiles = null;
+		guidedFiles = null;
+		guidedIndex = 0;
 		cache.clear();
 	});
 
@@ -197,10 +201,43 @@
 		if (canShareAll(files)) {
 			await attemptShare(files);
 		} else {
-			shareAllState = 'idle';
-			shareAllError = 'This device can only share one file at a time.';
-			preparedFiles = null;
+			guidedFiles = result;
+			guidedIndex = 0;
+			shareAllState = 'guided';
+			shareAllError = null;
 		}
+	}
+
+	async function shareNext() {
+		if (!guidedFiles || guidedIndex >= guidedFiles.length) return;
+		const prepared = guidedFiles[guidedIndex];
+		const file = new File([prepared.blob], prepared.job.fileName, { type: 'video/mp4' });
+		try {
+			await shareFiles([file], 'Status clips');
+			guidedIndex += 1;
+			if (guidedIndex >= guidedFiles.length) {
+				shareAllState = 'idle';
+				shareAllError = null;
+				guidedFiles = null;
+				guidedIndex = 0;
+				preparedFiles = null;
+			}
+		} catch (error) {
+			const name = (error as Error)?.name;
+			if (name === 'AbortError') {
+				// stay on the same clip
+			} else {
+				shareAllError = error instanceof Error ? error.message : String(error);
+			}
+		}
+	}
+
+	function exitGuided() {
+		shareAllState = 'idle';
+		shareAllError = null;
+		guidedFiles = null;
+		guidedIndex = 0;
+		preparedFiles = null;
 	}
 
 	async function exportClip(job: (typeof jobs)[number]) {
@@ -333,16 +370,39 @@
 
 	<div class="flex gap-2">
 		{#if shareable && jobs.length >= 2}
-			<button
-				class="btn btn-primary btn-sm"
-				type="button"
-				data-testid="btn-share-all"
-				data-state={shareAllState}
-				disabled={exporterState.busy}
-				onclick={shareAll}
-			>
-				{shareAllLabel}
-			</button>
+			{#if shareAllState === 'guided' && guidedFiles}
+				<span class="text-xs" data-testid="share-guided-status"
+					>Share {guidedIndex + 1} of {guidedFiles.length}</span
+				>
+				<button
+					class="btn btn-primary btn-sm"
+					type="button"
+					data-testid="btn-share-next"
+					disabled={exporterState.busy}
+					onclick={shareNext}
+				>
+					Share {guidedIndex + 1} of {guidedFiles.length}
+				</button>
+				<button
+					class="btn btn-ghost btn-sm"
+					type="button"
+					data-testid="btn-share-guided-exit"
+					onclick={exitGuided}
+				>
+					Exit
+				</button>
+			{:else}
+				<button
+					class="btn btn-primary btn-sm"
+					type="button"
+					data-testid="btn-share-all"
+					data-state={shareAllState}
+					disabled={exporterState.busy}
+					onclick={shareAll}
+				>
+					{shareAllLabel}
+				</button>
+			{/if}
 		{/if}
 		<button
 			class="btn btn-outline btn-sm"

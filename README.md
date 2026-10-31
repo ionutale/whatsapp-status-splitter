@@ -64,7 +64,9 @@ the supported target.
    auto-split** to discard manual edits.
 5. **Export** — **Download** one clip, **Share** it via the macOS share sheet
    (directly to WhatsApp / AirDrop), or **Export all (ZIP)**. Clips encode
-   sequentially with live progress, cancel, and retry.
+   sequentially with live progress, cancel, and retry. **Share all (N)**
+   prepares every clip and opens one share sheet (WhatsApp → Status); phones
+   that can only share one file at a time get a guided clip-by-clip sequence.
 
 Exports can optionally be center-cropped to 9:16 for full-screen statuses
 (toggle in the export panel).
@@ -74,8 +76,10 @@ Exports can optionally be center-cropped to 9:16 for full-screen statuses
 At phone widths the editor collapses to a single column: load a clip straight
 from Photos, trim it with the **trim bar**'s large touch handles (tap a label
 to type an exact time), tap a chip to switch clips, then **Share** the finished
-MP4 straight to WhatsApp — where Web Share is available. The desktop layout
-keeps the full precision timeline and filmstrip.
+MP4 straight to WhatsApp — where Web Share is available. **Share all (N)**
+prepares every clip and opens one share sheet (WhatsApp → Status); phones that
+can only share one file at a time get a guided clip-by-clip sequence. The
+desktop layout keeps the full precision timeline and filmstrip.
 
 ![WhatsApp Status Splitter phone view: a trim bar with large touch handles,
 clip chips, and the export panel](docs/screenshot-phone.png)
