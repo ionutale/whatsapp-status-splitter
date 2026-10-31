@@ -176,4 +176,132 @@ describe('ExportPanel', () => {
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(share).not.toHaveBeenCalled();
 	});
+
+	it('shares every prepared clip in one call', async () => {
+		const share = vi.fn<(data: { files: File[] }) => Promise<void>>(async () => {});
+		vi.stubGlobal('navigator', { canShare: () => true, share });
+		const screen = await render(ExportPanel, { exporter: makeExporter([]) });
+		(screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement).click();
+		await expect.poll(() => share.mock.calls.length).toBe(1);
+		expect(share.mock.calls[0][0].files.map((f) => f.name)).toEqual([
+			'vid_part01.mp4',
+			'vid_part02.mp4',
+			'vid_part03.mp4'
+		]);
+	});
+
+	it('never re-encodes when the browser refuses after a long prepare', async () => {
+		const { state, blobs } = makeCountingExporter();
+		const share = vi
+			.fn()
+			.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }))
+			.mockResolvedValueOnce(undefined);
+		vi.stubGlobal('navigator', { canShare: () => true, share });
+		const screen = await render(ExportPanel, { exporter: state });
+		const btn = () =>
+			screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement;
+		btn().click();
+		await expect.poll(() => share.mock.calls.length).toBe(1);
+		await expect.poll(() => btn().dataset.state).toBe('ready');
+		btn().click();
+		await expect.poll(() => share.mock.calls.length).toBe(2);
+		expect(blobs.length).toBe(3); // one encode per clip, total
+	});
+
+	it('shares only the successful subset when a clip fails', async () => {
+		const { state } = makeFailAfterFirstExporter(); // first succeeds, rest fail
+		const share = vi
+			.fn()
+			.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }))
+			.mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', { canShare: () => true, share });
+		const screen = await render(ExportPanel, { exporter: state });
+		(screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement).click();
+		await expect.poll(() => share.mock.calls.length).toBe(1);
+		expect(share.mock.calls[0][0].files).toHaveLength(1);
+		await expect
+			.poll(() => screen.container.querySelector('[data-testid="btn-share-all"]')?.textContent)
+			.toBe('Share 1 of 3'); // stays visible in the ready state after the refusal
+	});
+
+	it('shares nothing when preparation is canceled', async () => {
+		let reject!: (error: Error) => void;
+		const state = new ExportState({
+			encodeClip: () => ({
+				result: new Promise((_resolve, r) => {
+					reject = r;
+				}),
+				cancel: async () =>
+					reject(Object.assign(new Error('canceled'), { name: 'ConversionCanceledError' }))
+			}),
+			downloadBlob: () => {},
+			makeZip: async () => fakeBlob
+		});
+		const share = vi.fn(async () => {});
+		vi.stubGlobal('navigator', { canShare: () => true, share });
+		const screen = await render(ExportPanel, { exporter: state });
+		(screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement).click();
+		await expect.poll(() => state.busy).toBe(true);
+		(
+			screen.container.querySelector('[data-testid="btn-cancel-export"]') as HTMLButtonElement
+		).click();
+		await expect.poll(() => state.busy).toBe(false);
+		expect(share).not.toHaveBeenCalled();
+	});
+
+	it('drops stale blobs when settings change during preparation', async () => {
+		const resolvers: ((blob: Blob) => void)[] = [];
+		const state = new ExportState({
+			encodeClip: () => ({
+				result: new Promise<Blob>((resolve) => resolvers.push(resolve)),
+				cancel: async () => {}
+			}),
+			downloadBlob: () => {},
+			makeZip: async () => fakeBlob
+		});
+		const share = vi.fn(async () => {});
+		vi.stubGlobal('navigator', { canShare: () => true, share });
+		const screen = await render(ExportPanel, { exporter: state });
+		(screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement).click();
+		await expect.poll(() => resolvers.length).toBe(1);
+		project.preset = 'small'; // settings change mid-prepare
+
+		// Drain the sequential encoder one clip at a time until the run finishes.
+		while (state.busy) {
+			resolvers.shift()?.(fakeBlob);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		expect(share).not.toHaveBeenCalled();
+		expect(screen.container.querySelector('[data-testid="share-all-error"]')).not.toBeNull();
+	});
+
+	it('hides Share all for a single clip', async () => {
+		project.ready(5, meta()); // 1 clip
+		const screen = await render(ExportPanel, { exporter: makeExporter([]) });
+		expect(screen.container.querySelector('[data-testid="btn-share-all"]')).toBeNull();
+	});
+
+	it('resets share-all state when the file changes', async () => {
+		const share = vi
+			.fn()
+			.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }))
+			.mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', { canShare: () => true, share });
+		const screen = await render(ExportPanel, { exporter: makeExporter([]) });
+		const btn = () =>
+			screen.container.querySelector('[data-testid="btn-share-all"]') as HTMLButtonElement;
+		btn().click();
+		await expect.poll(() => btn().dataset.state).toBe('ready');
+		project.begin(new File([], 'other.mp4'));
+		project.ready(80, meta());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await expect.poll(() => btn().dataset.state).toBe('idle');
+		btn().click();
+		await expect.poll(() => share.mock.calls.length).toBe(2);
+		const lastNames = share.mock.calls[share.mock.calls.length - 1][0].files.map(
+			(f: File) => f.name
+		);
+		expect(lastNames).not.toContain('vid_part01.mp4');
+	});
 });

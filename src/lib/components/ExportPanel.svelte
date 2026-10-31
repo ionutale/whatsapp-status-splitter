@@ -2,12 +2,12 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { buildOutputPlan } from '../domain/bitrate';
 	import { clipFileName, sanitizeBaseName, zipFileName } from '../domain/naming';
-	import { canShareFiles, shareBlob } from '../media/share';
+	import { canShareAll, canShareFiles, shareFiles } from '../media/share';
 	import { exportState, type ExportState } from '../state/export.svelte';
 	import { project } from '../state/project.svelte';
 
 	let { exporter = null }: { exporter?: ExportState | null } = $props();
-	const state = $derived(exporter ?? exportState);
+	const exporterState = $derived(exporter ?? exportState);
 
 	const base = $derived(sanitizeBaseName(project.file?.name ?? 'video'));
 	const jobs = $derived(
@@ -26,7 +26,7 @@
 
 	const formatSize = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-	// `state.results` is keyed only by segment id, which survives boundary and
+	// `exporterState.results` is keyed only by segment id, which survives boundary and
 	// preset edits. Cache the exact plan+bounds a blob was encoded for so Share
 	// never reuses an encode that no longer matches the current row.
 	type CacheEntry = { key: string; blob: Blob };
@@ -34,17 +34,186 @@
 	const jobKey = (job: (typeof jobs)[number]) =>
 		`${job.plan.width}x${job.plan.height}/${job.plan.fit}/${job.plan.videoKbps}/${job.segment.start}-${job.segment.end}`;
 
+	type Prepared = { job: (typeof jobs)[number]; blob: Blob };
+
+	let shareAllState = $state<'idle' | 'preparing' | 'ready' | 'sharing'>('idle');
+	let shareAllError = $state<string | null>(null);
+	let preparedFiles = $state<Prepared[] | null>(null);
+
+	const shareAllLabel = $derived.by(() => {
+		if (shareAllState === 'preparing') return 'Preparing…';
+		if (shareAllState === 'sharing') return 'Sharing…';
+		if (shareAllState === 'ready') {
+			const pc = preparedFiles?.length ?? 0;
+			const tc = jobs.length;
+			if (pc > 0 && pc < tc) return `Share ${pc} of ${tc}`;
+			return `Share all (${pc || tc})`;
+		}
+		return `Share all (${jobs.length})`;
+	});
+
+	// Reset share-all state whenever the underlying file changes, so a stale
+	// `ready` state can never share the previous file's clips.
+	$effect(() => {
+		void project.file;
+		shareAllState = 'idle';
+		shareAllError = null;
+		preparedFiles = null;
+		cache.clear();
+	});
+
+	async function prepareAll(): Promise<Prepared[]> {
+		if (!project.file) return [];
+		const startJobs = jobs;
+		const missing: (typeof jobs)[number][] = [];
+		const preparedByKey = new SvelteMap<
+			string,
+			{ job: (typeof jobs)[number]; blob: Blob; key: string }
+		>();
+
+		for (const job of startJobs) {
+			const key = jobKey(job);
+			const c = cache.get(job.id);
+			if (c && c.key === key) {
+				preparedByKey.set(job.id, { job, blob: c.blob, key });
+			} else {
+				missing.push(job);
+			}
+		}
+
+		let canceled = false;
+		if (missing.length > 0) {
+			await exporterState.runJobs(project.file, missing, { finish: 'none' });
+			for (const job of missing) {
+				if (exporterState.statuses[job.id] === 'canceled') {
+					canceled = true;
+				}
+			}
+			if (!canceled) {
+				for (const job of missing) {
+					if (exporterState.statuses[job.id] === 'done') {
+						const blob = exporterState.results[job.id];
+						if (blob) {
+							const key = jobKey(job);
+							cache.set(job.id, { key, blob });
+							preparedByKey.set(job.id, { job, blob, key });
+						}
+					}
+				}
+			}
+		}
+
+		if (canceled) return [];
+
+		const nowJobs = jobs;
+		const result: Prepared[] = [];
+		for (const job of nowJobs) {
+			const key = jobKey(job);
+			const entry = preparedByKey.get(job.id);
+			if (entry && entry.key === key) {
+				result.push({ job, blob: entry.blob });
+			}
+		}
+		return result;
+	}
+
+	async function attemptShare(files: File[]) {
+		shareAllState = 'sharing';
+		try {
+			await shareFiles(files, 'Status clips');
+			shareAllState = 'idle';
+			shareAllError = null;
+			preparedFiles = null;
+		} catch (error) {
+			const name = (error as Error)?.name;
+			if (name === 'AbortError') {
+				shareAllState = 'idle';
+				shareAllError = null;
+				preparedFiles = null;
+			} else if (name === 'NotAllowedError') {
+				shareAllState = 'ready';
+				shareAllError = 'Tap Share all again to open the share sheet.';
+			} else {
+				shareAllState = 'idle';
+				shareAllError = error instanceof Error ? error.message : String(error);
+				preparedFiles = null;
+			}
+		}
+	}
+
+	async function shareAll() {
+		if (!project.file) return;
+		shareAllError = null;
+
+		if (shareAllState === 'ready' && preparedFiles) {
+			let stale = false;
+			if (preparedFiles.length === 0) stale = true;
+			for (const p of preparedFiles) {
+				const cj = jobs.find((j) => j.id === p.job.id);
+				if (!cj || jobKey(cj) !== jobKey(p.job)) {
+					stale = true;
+					break;
+				}
+			}
+			if (preparedFiles.some((p) => !jobs.find((j) => j.id === p.job.id))) stale = true;
+
+			if (stale) {
+				shareAllState = 'preparing';
+				preparedFiles = null;
+				const result = await prepareAll();
+				await finishPrepare(result);
+				return;
+			}
+
+			const files = preparedFiles.map(
+				(p) => new File([p.blob], p.job.fileName, { type: 'video/mp4' })
+			);
+			await attemptShare(files);
+			return;
+		}
+
+		shareAllState = 'preparing';
+		preparedFiles = null;
+		const result = await prepareAll();
+		await finishPrepare(result);
+	}
+
+	async function finishPrepare(result: Prepared[]) {
+		if (result.length === 0) {
+			const canceled = jobs.some((j) => exporterState.statuses[j.id] === 'canceled');
+			if (canceled) {
+				shareAllState = 'idle';
+				shareAllError = null;
+			} else {
+				shareAllState = 'idle';
+				shareAllError = 'Settings changed while preparing — try again.';
+			}
+			preparedFiles = null;
+			return;
+		}
+
+		preparedFiles = result;
+		const files = result.map((p) => new File([p.blob], p.job.fileName, { type: 'video/mp4' }));
+		if (canShareAll(files)) {
+			await attemptShare(files);
+		} else {
+			shareAllState = 'idle';
+			shareAllError = 'This device can only share one file at a time.';
+			preparedFiles = null;
+		}
+	}
+
 	async function exportClip(job: (typeof jobs)[number]) {
 		if (!project.file) return;
-		await state.runJobs(project.file, [job], { finish: 'download-first' });
-		if (state.statuses[job.id] !== 'done') return;
-		const blob = state.results[job.id];
+		await exporterState.runJobs(project.file, [job], { finish: 'download-first' });
+		if (exporterState.statuses[job.id] !== 'done') return;
+		const blob = exporterState.results[job.id];
 		if (blob) cache.set(job.id, { key: jobKey(job), blob });
 	}
 
 	async function exportAll() {
 		if (!project.file) return;
-		await state.runJobs(project.file, jobs, { finish: 'zip', zipName: zipFileName(base) });
+		await exporterState.runJobs(project.file, jobs, { finish: 'zip', zipName: zipFileName(base) });
 	}
 
 	async function shareClip(job: (typeof jobs)[number]) {
@@ -53,13 +222,13 @@
 		const cached = cache.get(job.id);
 		let blob = cached?.key === key ? cached.blob : undefined;
 		if (!blob) {
-			await state.runJobs(project.file, [job], { finish: 'none' });
-			blob = state.statuses[job.id] === 'done' ? state.results[job.id] : undefined;
+			await exporterState.runJobs(project.file, [job], { finish: 'none' });
+			blob = exporterState.statuses[job.id] === 'done' ? exporterState.results[job.id] : undefined;
 			if (blob) cache.set(job.id, { key, blob });
 		}
 		if (!blob) return;
 		try {
-			await shareBlob(blob, job.fileName);
+			await shareFiles([new File([blob], job.fileName, { type: 'video/mp4' })], job.fileName);
 		} catch (error) {
 			if ((error as Error)?.name !== 'AbortError') {
 				console.error('[share] failed', error);
@@ -104,7 +273,7 @@
 						class="btn btn-xs"
 						type="button"
 						data-testid="btn-export-clip"
-						disabled={state.busy}
+						disabled={exporterState.busy}
 						onclick={() => exportClip(job)}
 					>
 						Download
@@ -114,36 +283,37 @@
 							class="btn btn-ghost btn-xs"
 							type="button"
 							data-testid="btn-share-clip"
-							disabled={state.busy}
+							disabled={exporterState.busy}
 							onclick={() => shareClip(job)}
 						>
 							Share
 						</button>
 					{/if}
-					{#if state.statuses[job.id] === 'failed'}
+					{#if exporterState.statuses[job.id] === 'failed'}
 						<button
 							class="btn btn-warning btn-xs"
 							type="button"
 							data-testid="btn-retry-clip"
-							disabled={state.busy}
+							disabled={exporterState.busy}
 							onclick={() => exportClip(job)}
 						>
 							Retry
 						</button>
 					{/if}
-					{#if state.statuses[job.id] === 'encoding'}
+					{#if exporterState.statuses[job.id] === 'encoding'}
 						<progress
 							class="progress w-24 progress-primary"
-							value={state.progress[job.id] ?? 0}
+							value={exporterState.progress[job.id] ?? 0}
 							max="1"
 						></progress>
-					{:else if state.statuses[job.id] === 'done'}
+					{:else if exporterState.statuses[job.id] === 'done'}
 						<span class="text-xs text-success">Done</span>
-					{:else if state.statuses[job.id] === 'canceled'}
+					{:else if exporterState.statuses[job.id] === 'canceled'}
 						<span class="text-xs text-base-content/60">Canceled</span>
 					{/if}
-					{#if state.errors[job.id]}
-						<span class="text-xs text-error" data-testid="export-error">{state.errors[job.id]}</span
+					{#if exporterState.errors[job.id]}
+						<span class="text-xs text-error" data-testid="export-error"
+							>{exporterState.errors[job.id]}</span
 						>
 					{/if}
 				</div>
@@ -151,26 +321,44 @@
 		{/each}
 	</ul>
 
-	{#if state.runError}
-		<p class="text-xs text-error" role="alert" data-testid="export-run-error">{state.runError}</p>
+	{#if exporterState.runError}
+		<p class="text-xs text-error" role="alert" data-testid="export-run-error">
+			{exporterState.runError}
+		</p>
+	{/if}
+
+	{#if shareAllError}
+		<p class="text-xs text-error" role="alert" data-testid="share-all-error">{shareAllError}</p>
 	{/if}
 
 	<div class="flex gap-2">
+		{#if shareable && jobs.length >= 2}
+			<button
+				class="btn btn-primary btn-sm"
+				type="button"
+				data-testid="btn-share-all"
+				data-state={shareAllState}
+				disabled={exporterState.busy}
+				onclick={shareAll}
+			>
+				{shareAllLabel}
+			</button>
+		{/if}
 		<button
-			class="btn btn-primary btn-sm"
+			class="btn btn-outline btn-sm"
 			type="button"
 			data-testid="btn-export-all"
-			disabled={state.busy || jobs.length === 0}
+			disabled={exporterState.busy || jobs.length === 0}
 			onclick={exportAll}
 		>
 			Export all (ZIP)
 		</button>
-		{#if state.busy}
+		{#if exporterState.busy}
 			<button
 				class="btn btn-ghost btn-sm"
 				type="button"
 				data-testid="btn-cancel-export"
-				onclick={() => state.cancel()}
+				onclick={() => exporterState.cancel()}
 			>
 				Cancel
 			</button>
