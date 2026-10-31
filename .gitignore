@@ -23,3 +23,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 # Playwright
 test-results
+
+# Generated screenshot intermediates (scripts/screenshot.mjs)
+docs/screenshot-light.png
+docs/screenshot-dark.png

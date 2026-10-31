@@ -53,4 +53,16 @@ describe('share helpers', () => {
 		expect(share.mock.calls[0][0].files.map((f) => f.name)).toEqual(['a.mp4', 'b.mp4']);
 		expect(share.mock.calls[0][0].title).toBe('Status clips');
 	});
+
+	it('reports unsupported when the multi-file probe throws', () => {
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.stubGlobal('navigator', {
+			canShare: () => {
+				throw new Error('probe boom');
+			},
+			share: async () => {}
+		});
+		expect(canShareAll([new File([new Uint8Array([1])], 'a.mp4')])).toBe(false);
+		consoleError.mockRestore();
+	});
 });

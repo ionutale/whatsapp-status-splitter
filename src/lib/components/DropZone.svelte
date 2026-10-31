@@ -47,7 +47,7 @@
 	/>
 	<h2 class="text-2xl font-semibold">Drop a video here</h2>
 	<p class="text-base-content/70">
-		Or click to choose a file. You can also drag a video straight out of the Photos app.
+		Or click to choose a file. On a Mac, you can also drag a video straight out of the Photos app.
 	</p>
 	{#if error}
 		<p class="text-error" role="alert" data-testid="dropzone-error">{error}</p>
